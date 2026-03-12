@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "08277562c5054c933b37da67048c0ccd",
+    "content-hash": "943a84ba62e08277ef835499cd476cae",
     "packages": [
         {
             "name": "doctrine/collections",
@@ -5756,16 +5756,16 @@
         },
         {
             "name": "azjezz/psl",
-            "version": "4.2.0",
+            "version": "5.5.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/azjezz/psl.git",
-                "reference": "15153a64c9824335ce11654522e7d88de762d39e"
+                "reference": "8534d06d442b602970ee66ebc1d79c92361a4ba7"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/azjezz/psl/zipball/15153a64c9824335ce11654522e7d88de762d39e",
-                "reference": "15153a64c9824335ce11654522e7d88de762d39e",
+                "url": "https://api.github.com/repos/azjezz/psl/zipball/8534d06d442b602970ee66ebc1d79c92361a4ba7",
+                "reference": "8534d06d442b602970ee66ebc1d79c92361a4ba7",
                 "shasum": ""
             },
             "require": {
@@ -5773,16 +5773,17 @@
                 "ext-intl": "*",
                 "ext-json": "*",
                 "ext-mbstring": "*",
+                "ext-openssl": "*",
                 "ext-sodium": "*",
-                "php": "~8.3.0 || ~8.4.0 || ~8.5.0",
-                "revolt/event-loop": "^1.0.7"
+                "php": "~8.4.0 || ~8.5.0",
+                "revolt/event-loop": "^1.0.8"
             },
             "require-dev": {
-                "carthage-software/mago": "^1.0.0-beta.32",
-                "infection/infection": "^0.31.2",
-                "php-coveralls/php-coveralls": "^2.7.0",
-                "phpbench/phpbench": "^1.4.0",
-                "phpunit/phpunit": "^9.6.22"
+                "carthage-software/mago": "^1.14.0",
+                "infection/infection": "^0.32.6",
+                "php-coveralls/php-coveralls": "^2.9.1",
+                "phpbench/phpbench": "^1.5.1",
+                "phpunit/phpunit": "^13.0.5"
             },
             "suggest": {
                 "php-standard-library/phpstan-extension": "PHPStan integration",
@@ -5816,7 +5817,7 @@
             "description": "PHP Standard Library",
             "support": {
                 "issues": "https://github.com/azjezz/psl/issues",
-                "source": "https://github.com/azjezz/psl/tree/4.2.0"
+                "source": "https://github.com/azjezz/psl/tree/5.5.0"
             },
             "funding": [
                 {
@@ -5828,7 +5829,7 @@
                     "type": "github"
                 }
             ],
-            "time": "2025-10-25T08:31:40+00:00"
+            "time": "2026-03-12T20:19:39+00:00"
         },
         {
             "name": "clue/ndjson-react",
