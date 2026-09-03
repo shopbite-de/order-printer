@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "08277562c5054c933b37da67048c0ccd",
+    "content-hash": "3a775931d214d4b406eb8994ebef4592",
     "packages": [
         {
             "name": "doctrine/collections",
@@ -7046,16 +7046,16 @@
         },
         {
             "name": "php-standard-library/psalm-plugin",
-            "version": "2.3.0",
+            "version": "2.4.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/php-standard-library/psalm-plugin.git",
-                "reference": "bf6d560ae498966150bc66a42e02744b0ee242c5"
+                "reference": "7c120dc5224ca25acbd8c8e6be56577cad7f53f0"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/php-standard-library/psalm-plugin/zipball/bf6d560ae498966150bc66a42e02744b0ee242c5",
-                "reference": "bf6d560ae498966150bc66a42e02744b0ee242c5",
+                "url": "https://api.github.com/repos/php-standard-library/psalm-plugin/zipball/7c120dc5224ca25acbd8c8e6be56577cad7f53f0",
+                "reference": "7c120dc5224ca25acbd8c8e6be56577cad7f53f0",
                 "shasum": ""
             },
             "require": {
@@ -7094,9 +7094,9 @@
             "description": "Psalm plugin for the PHP Standard Library",
             "support": {
                 "issues": "https://github.com/php-standard-library/psalm-plugin/issues",
-                "source": "https://github.com/php-standard-library/psalm-plugin/tree/2.3.0"
+                "source": "https://github.com/php-standard-library/psalm-plugin/tree/2.4.0"
             },
-            "time": "2023-11-28T12:22:48+00:00"
+            "time": "2026-03-16T18:44:56+00:00"
         },
         {
             "name": "phpdocumentor/reflection-common",
