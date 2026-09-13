@@ -18,7 +18,7 @@ psalm-baseline:
 
 .PHONY: tests
 tests:
-	XDEBUG_MODE=off $(ON_CONTAINER) vendor/bin/phpunit -d --testdox
+	XDEBUG_MODE=off $(ON_CONTAINER) vendor/bin/phpunit --testdox
 
 .PHONY: qa
 qa: cs-fix psalm tests

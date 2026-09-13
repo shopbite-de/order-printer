@@ -1,7 +1,5 @@
 imports:
     - { resource: 'services/shopware.yaml' }
-    - { resource: 'services/epson.yaml' }
-    - { resource: 'services/cups.yaml' }
     - { resource: 'services/escpos.yaml' }
 
 services:
@@ -11,14 +9,6 @@ services:
 
     # CLI COMMANDS
     Veliu\OrderPrinter\Adapter\Command\PrintOrderCommand: ~
-
-    Veliu\OrderPrinter\Domain\Service\DefaultPrintOrderProcessor: ~
-
-    Veliu\OrderPrinter\Domain\Receipt\ReceiptGenerator: ~
-    Veliu\OrderPrinter\Domain\Receipt\ReceiptGeneratorInterface: '@Veliu\OrderPrinter\Domain\Receipt\ReceiptGenerator'
-
-    Veliu\OrderPrinter\Infra\Symfony\FileSystem\ReceiptSaver: ~
-    Veliu\OrderPrinter\Domain\Receipt\ReceiptSaverInterface: '@Veliu\OrderPrinter\Infra\Symfony\FileSystem\ReceiptSaver'
 
     Veliu\OrderPrinter\Infra\Symfony\Scheduler\OpenOrderProvider: ~
 
