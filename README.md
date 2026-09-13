@@ -1,112 +1,118 @@
 # Order Printer for Shopware 6
 
-A Symfony-based microservice that automatically fetches open orders from Shopware 6 and prints them on ESC/POS compatible thermal printers, either attached locally (USB/serial) or reachable over the network (raw ESC/POS on TCP port 9100).
+A small Symfony 8 service that watches a Shopware 6 shop for new orders and prints each one as a receipt on an ESC/POS thermal printer. It runs next to the shop (on a server, in a container on Dokploy) or on a Raspberry Pi at the restaurant, and reaches the printer either as a local USB/serial device or over the network on TCP port 9100. No CUPS, no drivers.
 
-## Features
+## How it works
 
-- **Automated Polling**: Uses Symfony Scheduler to check for new orders every 10 seconds.
-- **Shopware Integration**: Uses the Shopware SDK to fetch order details.
-- **ESC/POS Support**: Generates formatted receipts for thermal printers.
-- **Asynchronous Processing**: Uses Symfony Messenger for reliable print job handling.
-
-## Docker
-
-A multi-stage `Dockerfile` and a reference `compose.yaml` run both consumers under supervisor in one container, with a health check on `printer:check` and a volume for the SQLite queue and receipt copies. See [docs/docker.md](docs/docker.md) for build, environment variables, volumes and Dokploy setup.
-
-```bash
-APP_SECRET=... SHOPWARE_HOST=... SHOPWARE_CLIENT_ID=... SHOPWARE_CLIENT_SECRET=... PRINTER_DSN=dummy:// docker compose up -d
+```
+Shopware 6 ──(Admin API, every 10 s)──► scheduler worker ──► SQLite queue ──► print worker ──► printer
+                                                                                      └──► copy in data/receipts/
 ```
 
-## Requirements
+1. The **scheduler worker** polls the Admin API every 10 seconds for orders in state *open* and queues one print job per order.
+2. The **print worker** renders the receipt (42 columns, order number, time, delivery or pickup, address, items with extras, totals) and sends it to the printer. A copy of the raw bytes is kept in `data/receipts/`.
+3. Only after the receipt was printed is the order set to *in progress* in Shopware. A failed print leaves it *open* and is retried with backoff for about 30 minutes; the poll never queues the same order twice while a job is pending (see [Failure handling](#failure-handling)).
 
-- PHP 8.5 or higher with `intl`, `mbstring`, `bcmath`, `pdo_sqlite` (or use the Docker image)
-- SQLite extension (for queue and local storage)
-- An ESC/POS printer: a local device file (e.g. `/dev/usb/lp0`) or a network printer / Raspberry Pi gateway listening on TCP port 9100. No CUPS required.
+Line items are printed by name, or by product number when the ShopBite Shopware plugin marks them with the `number` receipt print type (for example `26 +Knoblauch` instead of `Pizza Mix +Knoblauch`).
 
-## Installation
+## Quick start
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/your-username/order-printer.git
-   cd order-printer
-   ```
+### With Docker (recommended for servers and Dokploy)
 
-2. **Install dependencies**:
-   ```bash
-   composer install
-   ```
+```bash
+APP_SECRET=$(openssl rand -hex 16) \
+SHOPWARE_HOST=https://shopware.example.com \
+SHOPWARE_CLIENT_ID=... SHOPWARE_CLIENT_SECRET=... \
+PRINTER_DSN=tcp://192.168.1.50:9100 \
+docker compose up -d
 
-3. **Configure environment**:
-   Copy the example environment file and fill in your credentials:
-   ```bash
-   cp .env .env.local
-   ```
-   Edit `.env.local` and provide your Shopware API credentials and printer name.
+docker compose logs -f
+docker compose exec order-printer su-exec app php bin/console printer:test
+```
 
-4. **Initialize database** (the queue and lock tables are created automatically on first use):
-   ```bash
-   bin/console doctrine:database:create
-   ```
+The image runs both workers under supervisor, checks the printer connection as its health check and keeps the queue and receipt copies on the `/app/data` volume. Build, environment variables, USB devices and the Dokploy setup are described in [docs/docker.md](docs/docker.md).
+
+### On a host (Raspberry Pi, bare server)
+
+Requirements: PHP 8.5 with `intl`, `mbstring`, `bcmath`, `pdo_sqlite` and `sqlite3`; Composer.
+
+```bash
+git clone https://github.com/shopbite-de/order-printer.git
+cd order-printer
+composer install
+cp .env .env.local            # then fill in the variables below
+bin/console doctrine:database:create
+bin/console printer:test       # prints a test receipt
+```
+
+Run the two workers, for example under supervisor (`dev-ops/supervisor/conf.d/message.consumer.conf`):
+
+```bash
+bin/console messenger:consume scheduler_default --time-limit=3600   # polls Shopware
+bin/console messenger:consume async --time-limit=3600               # prints
+```
+
+In the `dev` environment print jobs run synchronously, so `bin/console app:print-order --all-open` prints without any worker.
 
 ## Configuration
 
-The following environment variables are required in your `.env.local`:
+All configuration is done through environment variables (`.env.local` on a host, the container environment in Docker).
 
-- `SHOPWARE_HOST`: Your Shopware 6 store URL.
-- `SHOPWARE_CLIENT_ID`: Integration Client ID.
-- `SHOPWARE_CLIENT_SECRET`: Integration Client Secret.
-- `PRINTER_DSN`: How to reach the printer:
-  - `file:///dev/usb/lp0` — local USB/serial device (any writable file path works, e.g. `file:///dev/null` in development)
-  - `tcp://192.168.1.50:9100` — network printer or Pi gateway speaking raw ESC/POS; the port defaults to 9100 and connecting times out after 5 seconds
-  - `dummy://` — no printer; receipts are only archived in `DATA_DIR`
-- `DATA_DIR`: Directory (relative to the project root) where a copy of every printed receipt is stored.
-- `SHOP_NAME` (optional): Restaurant name printed on `printer:test` receipts. Defaults to the domain of `SHOPWARE_HOST`.
+| Variable                 | Required | Description                                                                                                                  |
+| ------------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `SHOPWARE_HOST`          | yes      | Shop URL, e.g. `https://shopware.example.com`                                                                                |
+| `SHOPWARE_CLIENT_ID`     | yes      | Client id of a Shopware *Integration* (Settings › System › Integrations) with read and update access to orders               |
+| `SHOPWARE_CLIENT_SECRET` | yes      | Its client secret                                                                                                            |
+| `PRINTER_DSN`            | yes      | How to reach the printer, see below                                                                                          |
+| `APP_SECRET`             | prod     | Any random string                                                                                                            |
+| `DATA_DIR`               | no       | Where receipt copies are stored, relative to the project root. Default `/data/receipts/`                                     |
+| `SHOP_NAME`              | no       | Restaurant name on `printer:test` receipts. Defaults to the domain of `SHOPWARE_HOST`                                        |
 
-## Usage
+### Printer DSN
 
-Start the messenger worker and the scheduler:
+| `PRINTER_DSN`              | Use for                                                                                                      |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `file:///dev/usb/lp0`      | USB or serial printer on this machine. The user running the service needs write access (`usermod -aG lp …`). Any writable path works, e.g. `file:///dev/null` in development |
+| `tcp://192.168.1.50:9100`  | Network printer, or a Raspberry Pi acting as printer gateway, speaking raw ESC/POS. The port defaults to 9100; connecting times out after 5 seconds |
+| `dummy://`                 | No printer. Receipts are only archived in `DATA_DIR`                                                         |
 
-```bash
-# Run the scheduler to poll for orders
-bin/console messenger:consume scheduler_default
+## Commands
 
-# Run the worker to process print jobs
-bin/console messenger:consume async
-```
+| Command                                              | Purpose                                                                                                       |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `bin/console printer:check [--dsn=…]`                | Is the printer reachable? Prints nothing, exit code 0/1, answers in under 5 s. Used as Docker health check    |
+| `bin/console printer:test [--dsn=…]`                 | Prints a test receipt with shop name, time, hostname and DSN through the same connector as real receipts      |
+| `bin/console app:print-order --order-number=10556`   | Prints one order. Add `--no-mark-in-progress` to leave the Shopware state untouched                          |
+| `bin/console app:print-order --all-open`             | Queues every order in state *open*                                                                            |
+| `bin/console messenger:consume scheduler_default`    | The poll worker                                                                                               |
+| `bin/console messenger:consume async`                | The print worker                                                                                              |
+| `bin/console messenger:failed:show` / `:remove <id>` | Inspect and clean up permanently failed print jobs                                                            |
 
-## Checking the printer
-
-Two commands verify the chain server → network → printer without a real order:
-
-```bash
-bin/console printer:check                               # reachability only, prints nothing, exit code 0/1
-bin/console printer:check --dsn=tcp://100.64.0.5:9100   # check a different printer than PRINTER_DSN
-bin/console printer:test                                # prints a test receipt through the configured printer
-bin/console printer:test --dsn=tcp://100.64.0.5:9100
-```
-
-- `printer:check` opens a TCP connection for `tcp://` (3 s timeout) or checks that the device file exists and is writable for `file://`. It answers in under 5 seconds even when the host is down, so it works as a Docker health check and as a heartbeat source:
-  ```dockerfile
-  HEALTHCHECK --interval=60s --timeout=10s CMD php bin/console printer:check || exit 1
-  ```
-- `printer:test` prints a receipt with the shop name (`SHOP_NAME`, optional, defaults to the `SHOPWARE_HOST` domain), the current time, the container hostname and the DSN, using the same connector as real receipts.
-
-Both exit with 1 and a readable message on failure.
+Both `printer:*` commands accept `--dsn=tcp://…` to try another printer than the configured one and exit with 1 and a readable message on failure.
 
 ## Failure handling
 
-Short printer outages (Pi reboot, restaurant WLAN, paper out) are expected, so a print job is never dropped after one failed attempt:
+Short printer outages (Pi reboot, restaurant WLAN, paper out) are expected, so a print job is never dropped after one failed attempt.
 
 - **Retries with backoff.** A failed print job is retried 10 times: after 10 s, 20 s, 40 s, 80 s, 160 s and then every 5 minutes, about 30 minutes in total (`retry_strategy` in `config/packages/messenger.yaml`).
-- **The order stays `open` in Shopware** until the receipt was actually printed. Only a successful print marks it as in progress.
-- **No duplicates.** Every queued print job holds a Messenger deduplication lock for its order (`DeduplicateStamp`, stored in the `lock_keys` table of the same SQLite database), so the 10-second poll does not queue an order that is already queued or retrying. When the printer comes back, each order is printed exactly once.
-- **Permanent failure.** After the last retry the job is moved to the `failed` transport, its lock is released and an `error` log line with the order number is written, e.g. `Printing order 10556 failed permanently after 11 attempt(s): Cannot connect to printer "tcp://…"`. As long as the order is still `open` in Shopware the next poll queues it again and a new retry window starts.
+- **The order stays *open* in Shopware** until the receipt was actually printed. Only a successful print marks it as *in progress*.
+- **No duplicates.** Every queued print job holds a Messenger deduplication lock for its order (stored in the same SQLite database), so the 10-second poll does not queue an order that is already queued or retrying. When the printer comes back, each order is printed exactly once.
+- **Permanent failure.** After the last retry the job is moved to the `failed` transport, its lock is released and an `error` log line with the order number is written, e.g. `Printing order 10556 failed permanently after 11 attempt(s): Cannot connect to printer "tcp://…"`. As long as the order is still *open* in Shopware the next poll queues it again and a new retry window starts, so nothing is lost as long as the printer comes back eventually.
+- **Orders Shopware does not know** fail immediately without retries.
 
-Inspect or clean up permanently failed jobs with:
+Failed messages are kept for inspection only; since the poll re-queues open orders on its own, prefer `messenger:failed:remove` over `messenger:failed:retry` to avoid printing a receipt twice.
+
+## Development
 
 ```bash
-bin/console messenger:failed:show
-bin/console messenger:failed:remove <id>   # the poll re-queues open orders on its own, so prefer remove over retry
+make tests            # PHPUnit, unit + integration suites
+make cs-fix           # php-cs-fixer
+make psalm            # static analysis
+make qa               # all of the above
 ```
 
-To reprint a single order by hand, use `bin/console app:print-order --order-number=<number>` (add `--no-mark-in-progress` to leave the Shopware state untouched).
+- Receipt layout is covered by byte-for-byte snapshots in `tests/Snapshots/<orderNumber>/`. On a mismatch the actual output lands next to the snapshot as `actual.txt`; accept it with `UPDATE_SNAPSHOTS=1 vendor/bin/phpunit --filter testSnapshots`.
+- `tests/Integration/PrintRetryFlowTest` drives a real Messenger worker against a closed TCP port that is opened later, on a mock clock, to prove the retry and deduplication behaviour end to end.
+- CI (`.github/workflows/ci.yml`) runs syntax check, Psalm, PHPUnit, php-cs-fixer, `composer audit`, the Doctrine schema validation and a `docker build` smoke test.
+
+Architecture notes for contributors are in [CLAUDE.md](CLAUDE.md); user documentation lives on [shopbite.de](https://shopbite.de) (receipt printer section).
