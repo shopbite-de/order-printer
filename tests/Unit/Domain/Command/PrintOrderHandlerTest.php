@@ -14,7 +14,6 @@ use Veliu\OrderPrinter\Domain\Command\PrintOrderHandler;
 use Veliu\OrderPrinter\Domain\Order\Exception\OrderNotFound;
 use Veliu\OrderPrinter\Domain\Order\Order;
 use Veliu\OrderPrinter\Domain\Order\OrderRepositoryInterface;
-use Veliu\OrderPrinter\Domain\PrintJob\PrintJobRepositoryInterface;
 use Veliu\OrderPrinter\Domain\Service\PrintOrderProcessorInterface;
 
 #[CoversClass(PrintOrderHandler::class)]
@@ -22,7 +21,6 @@ final class PrintOrderHandlerTest extends TestCase
 {
     private OrderRepositoryInterface&MockObject $orderRepository;
     private PrintOrderProcessorInterface&MockObject $printOrderProcessor;
-    private PrintJobRepositoryInterface&MockObject $printJobs;
     private PrintOrderHandler $handler;
 
     #[\Override]
@@ -30,27 +28,24 @@ final class PrintOrderHandlerTest extends TestCase
     {
         $this->orderRepository = $this->createMock(OrderRepositoryInterface::class);
         $this->printOrderProcessor = $this->createMock(PrintOrderProcessorInterface::class);
-        $this->printJobs = $this->createMock(PrintJobRepositoryInterface::class);
 
-        $this->handler = new PrintOrderHandler($this->orderRepository, $this->printOrderProcessor, $this->printJobs);
+        $this->handler = new PrintOrderHandler($this->orderRepository, $this->printOrderProcessor);
     }
 
-    public function testPrintsTheOrderAndReleasesTheJob(): void
+    public function testPrintsTheOrder(): void
     {
         $order = $this->createOrder('ORDER-123');
         $this->orderRepository->expects($this->once())->method('getByOrderNumber')->with('ORDER-123')->willReturn($order);
         $this->printOrderProcessor->expects($this->once())->method('__invoke')->with($order, true);
-        $this->printJobs->expects($this->once())->method('finish')->with('ORDER-123');
 
         ($this->handler)(new PrintOrderCommand('ORDER-123', true));
     }
 
-    public function testKeepsTheJobWhenPrintingFails(): void
+    public function testPropagatesPrinterFailuresSoMessengerRetries(): void
     {
         $order = $this->createOrder('ORDER-123');
         $this->orderRepository->method('getByOrderNumber')->willReturn($order);
         $this->printOrderProcessor->method('__invoke')->willThrowException($failure = new \RuntimeException('Cannot connect to printer'));
-        $this->printJobs->expects($this->never())->method('finish');
 
         $this->expectExceptionObject($failure);
 

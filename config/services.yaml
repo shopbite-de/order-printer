@@ -16,7 +16,5 @@ services:
     Veliu\OrderPrinter\Domain\Command\PrintOrderHandler: ~
     Veliu\OrderPrinter\Domain\Command\PrintOpenOrdersHandler: ~
 
-    # PRINT JOB TRACKING (dedup of queued/retrying orders, see PrintJobRepositoryInterface)
-    Veliu\OrderPrinter\Infra\Doctrine\PrintJobRepository: ~
-    Veliu\OrderPrinter\Domain\PrintJob\PrintJobRepositoryInterface: '@Veliu\OrderPrinter\Infra\Doctrine\PrintJobRepository'
+    # Logs retried / permanently failed print jobs with their order number
     Veliu\OrderPrinter\Infra\Symfony\Messenger\PrintOrderFailedListener: ~

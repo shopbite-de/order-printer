@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Veliu\OrderPrinter\Tests\Integration;
 
-use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\ORM\Tools\SchemaTool;
+use Doctrine\DBAL\Connection;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Clock\MockClock;
 use Symfony\Component\EventDispatcher\EventDispatcher;
+use Symfony\Component\Lock\LockFactory;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Event\WorkerMessageFailedEvent;
 use Symfony\Component\Messenger\Event\WorkerRunningEvent;
@@ -20,9 +20,9 @@ use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 use Symfony\Component\Messenger\Worker;
 use Veliu\OrderPrinter\Domain\Address\Address;
 use Veliu\OrderPrinter\Domain\Command\PrintOpenOrdersCommand;
+use Veliu\OrderPrinter\Domain\Command\PrintOpenOrdersHandler;
 use Veliu\OrderPrinter\Domain\Order\Order;
 use Veliu\OrderPrinter\Domain\Order\OrderItem;
-use Veliu\OrderPrinter\Domain\PrintJob\PrintJobRepositoryInterface;
 use Veliu\OrderPrinter\Domain\Receipt\ReceiptPositionPrintTypeEnum;
 use Veliu\OrderPrinter\Infra\Shopware\OrderRepository;
 use Veliu\OrderPrinter\Infra\Symfony\Messenger\PrintOrderFailedListener;
@@ -31,7 +31,8 @@ use Veliu\OrderPrinter\Tests\Support\SpyLogger;
 
 /**
  * End-to-end: scheduler poll → async queue → worker → real ESC/POS connector over TCP,
- * with the retry strategy from messenger.yaml and a MockClock so backoff delays cost no time.
+ * with the retry strategy from messenger.yaml, the deduplication lock in the SQLite lock table,
+ * and a MockClock so backoff delays cost no time.
  * "Printer unreachable" is a closed local TCP port; "printer back" opens a listener on it.
  */
 final class PrintRetryFlowTest extends KernelTestCase
@@ -45,7 +46,7 @@ final class PrintRetryFlowTest extends KernelTestCase
     private MessageBusInterface $bus;
     private InMemoryTransport $async;
     private InMemoryTransport $failed;
-    private PrintJobRepositoryInterface $printJobs;
+    private LockFactory $lockFactory;
     private EventDispatcher $dispatcher;
     private int $printerPort;
     /** @var resource|null */
@@ -67,22 +68,20 @@ final class PrintRetryFlowTest extends KernelTestCase
         $this->orders = new InMemoryOrderRepository(self::createOpenOrder());
         $container->set(OrderRepository::class, $this->orders);
 
-        $entityManager = $container->get(EntityManagerInterface::class);
-        $schemaTool = new SchemaTool($entityManager);
-        $metadata = $entityManager->getMetadataFactory()->getAllMetadata();
-        $schemaTool->dropSchema($metadata);
-        $schemaTool->createSchema($metadata);
+        // The lock store creates its table on first use; start every test without stale locks.
+        $container->get(Connection::class)->executeStatement('DROP TABLE IF EXISTS lock_keys');
 
         $this->bus = $container->get(MessageBusInterface::class);
         $this->async = $container->get('messenger.transport.async');
         $this->failed = $container->get('messenger.transport.failed');
-        $this->printJobs = $container->get(PrintJobRepositoryInterface::class);
+        $this->lockFactory = $container->get(LockFactory::class);
 
         // The same listeners messenger:consume uses, minus the ones that reset services or react to signals.
         $dispatcher = new EventDispatcher();
         $dispatcher->addSubscriber($container->get('messenger.retry.send_failed_message_for_retry_listener'));
         $dispatcher->addSubscriber($container->get('messenger.failure.add_error_details_stamp_listener'));
         $dispatcher->addSubscriber($container->get('messenger.failure.send_failed_message_to_failure_transport_listener'));
+        $dispatcher->addSubscriber($container->get('messenger.failure.release_deduplication_lock_on_failure_listener'));
         $dispatcher->addListener(WorkerMessageFailedEvent::class, $container->get(PrintOrderFailedListener::class));
         $dispatcher->addSubscriber(new StopWorkerOnMessageLimitListener(1));
         $idleTicks = 0;
@@ -129,16 +128,16 @@ final class PrintRetryFlowTest extends KernelTestCase
     {
         $this->poll();
         self::assertCount(1, $this->async->getSent(), 'the open order is queued once');
-        self::assertTrue($this->printJobs->isPending(self::ORDER_NUMBER));
+        self::assertTrue($this->isLocked(), 'the queued order holds its deduplication lock');
 
         $this->poll();
-        self::assertCount(1, $this->async->getSent(), 'a second poll does not queue the pending order again');
+        self::assertCount(1, $this->async->getSent(), 'a second poll does not queue the locked order again');
 
         // Attempt 1: nothing listens on the printer port.
         $this->runWorkerOnce();
         self::assertSame(0, $this->orders->markInProgressCalls);
         self::assertTrue($this->orders->isOpen(), 'a failed print leaves the order open in Shopware');
-        self::assertTrue($this->printJobs->isPending(self::ORDER_NUMBER));
+        self::assertTrue($this->isLocked(), 'the lock is held through retries');
         self::assertRetryQueued(retryCount: 1, delayMs: 10_000);
         self::assertCount(0, glob(self::RECEIPT_DIR.'*'), 'no receipt copy without a successful print');
 
@@ -159,7 +158,7 @@ final class PrintRetryFlowTest extends KernelTestCase
 
         self::assertSame(1, $this->orders->markInProgressCalls, 'marked in progress exactly once, after printing');
         self::assertFalse($this->orders->isOpen());
-        self::assertFalse($this->printJobs->isPending(self::ORDER_NUMBER), 'the job is released after printing');
+        self::assertFalse($this->isLocked(), 'the lock is released after printing');
         self::assertSame([], $this->async->get(), 'nothing left in the queue');
         self::assertCount(0, $this->failed->getSent());
 
@@ -192,7 +191,7 @@ final class PrintRetryFlowTest extends KernelTestCase
         self::assertTrue($this->orders->isOpen(), 'the order stays open in Shopware');
         self::assertSame([], $this->async->get(), 'no further retry is queued');
         self::assertCount(1, $this->failed->getSent(), 'the job ended up in the failure transport');
-        self::assertFalse($this->printJobs->isPending(self::ORDER_NUMBER), 'the job is released so the next poll can queue it again');
+        self::assertFalse($this->isLocked(), 'the lock is released so the next poll can queue the order again');
 
         $errors = $this->logger->recordsOfLevel('error');
         self::assertCount(1, $errors);
@@ -203,12 +202,24 @@ final class PrintRetryFlowTest extends KernelTestCase
 
         $this->poll();
         self::assertCount(12, $this->async->getSent(), 'a new retry window starts while the order is still open');
-        self::assertTrue($this->printJobs->isPending(self::ORDER_NUMBER));
+        self::assertTrue($this->isLocked());
     }
 
     private function poll(): void
     {
         $this->bus->dispatch(new PrintOpenOrdersCommand(true));
+    }
+
+    /** Whether the deduplication lock for the order is currently held (by a queued or retrying job). */
+    private function isLocked(): bool
+    {
+        $probe = $this->lockFactory->createLock(PrintOpenOrdersHandler::deduplicationKey(self::ORDER_NUMBER), 1.0, false);
+        if (!$probe->acquire()) {
+            return true;
+        }
+        $probe->release();
+
+        return false;
     }
 
     /**
