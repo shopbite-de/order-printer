@@ -50,8 +50,8 @@ CI (`.github/workflows/ci.yml`) additionally runs `php -l` on every file, `php-c
 
 Layers under `src/`:
 
-- `Domain/` — framework-free model and ports: `Order`, `OrderItem`, `Address`, `PrintOrderProcessorInterface`, `OrderRepositoryInterface`, the Messenger messages and handlers, and the receipt-position rules.
-- `Infra/` — adapters: `Shopware/` (Admin API client), `EscPos/` (printer connector factory + receipt layout), `Symfony/Scheduler/`.
+- `Domain/` — model and ports: `Order`, `OrderItem`, `Address`, `PrintOrderProcessorInterface`, `OrderRepositoryInterface`, `PrintJob` + `PrintJobRepositoryInterface`, the Messenger messages and handlers, and the receipt-position rules. `PrintJob` is the only Doctrine entity and carries ORM attributes.
+- `Infra/` — adapters: `Shopware/` (Admin API client), `EscPos/` (printer connector factory + receipt layout), `Doctrine/` (print-job table), `Symfony/Scheduler/`, `Symfony/Messenger/` (failed-job listener).
 - `Adapter/Command/` — the single console command.
 
 Service wiring is explicit in `config/services.yaml` and `config/services/*.yaml`; there is no directory-wide resource autoload. Every new class must be registered there, and every interface must be aliased to its implementation.
@@ -59,16 +59,26 @@ Service wiring is explicit in `config/services.yaml` and `config/services/*.yaml
 ### Message flow
 
 ```
-OpenOrderProvider (#[AsSchedule], every 10s)
-  └─ PrintOpenOrdersCommand(markInProgress: true)          → transport "async"
+OpenOrderProvider (#[AsSchedule], every 10s, handled inside the scheduler_default worker)
+  └─ PrintOpenOrdersCommand(markInProgress: true)          → no transport: handled synchronously
        └─ PrintOpenOrdersHandler: OrderRepository::findNewNumbers()
-            └─ PrintOrderCommand(orderNumber, markInProgress) → forced onto "sync" via TransportNamesStamp
-                 └─ PrintOrderHandler: getByOrderNumber() → PrintOrderProcessorInterface
+            ├─ skip orders with a pending PrintJob (queued or retrying)
+            └─ PrintJobRepository::start() + PrintOrderCommand(orderNumber, markInProgress) → transport "async"
+                 └─ PrintOrderHandler: getByOrderNumber() → PrintOrderProcessorInterface → PrintJobRepository::finish()
 ```
 
-Both messages carry `#[AsMessage(transport: 'async')]`. The `async` transport is Doctrine/SQLite (`data/queue_<env>.db`) in prod, `sync://` in dev, and `in-memory://` in test, so in dev `app:print-order` prints immediately without a worker. `PrintOpenOrdersHandler` deliberately dispatches each `PrintOrderCommand` synchronously so one scheduler tick prints all open orders in order and failures surface in the same process. Failed messages go to the `failed` Doctrine queue.
+`PrintOpenOrdersCommand` is deliberately **not** routed to a transport: the scheduler worker runs the poll inline, a failed poll (Shopware down) is just logged and repeated 10 s later, never retried or sent to the failure transport. `PrintOrderCommand` carries `#[AsMessage(transport: 'async')]`. The `async` transport is Doctrine/SQLite (`data/queue_<env>.db`) in prod, `sync://` in dev, and `in-memory://` in test, so in dev `app:print-order` prints immediately without a worker.
 
-Production runs two supervisor programs (`dev-ops/supervisor/conf.d/message.consumer.conf`): one consuming `scheduler_default`, one consuming `async`.
+Production runs two supervisor programs (`dev-ops/supervisor/conf.d/message.consumer.conf`): one consuming `scheduler_default` (polling), one consuming `async` (printing).
+
+### Retries and de-duplication
+
+- `async` has `retry_strategy` 10 retries, 10 s delay, multiplier 2, max 5 min, jitter 0: 10, 20, 40, 80, 160 s, then 5 × 300 s = 1810 s ≈ 30 min before a job fails permanently. `PrintRetryFlowTest` pins these numbers.
+- `PrintProcessor` marks the order in progress only after `Printer::close()` succeeded, so a failed print leaves the order `open`; `PrintOrderHandler` releases the `PrintJob` only after the processor returned.
+- `print_job` rows are the "in flight" marker the poll checks. A row older than `PrintJobRepository::PENDING_TTL` (2 h, longer than retry window + Doctrine `redeliver_timeout`) is stale and ignored. The repository clears the identity map before every lookup because the scheduler worker and the print worker share the table from different processes.
+- `PrintOrderFailedListener` (`WorkerMessageFailedEvent`, after Messenger's retry listener) logs a `warning` per retried attempt and an `error` with `orderNumber`, `attempts` and `error` context when Messenger gives up, then releases the job so the next poll re-queues the order if it is still open. The message also lands in the `failed` transport for inspection.
+- `OrderNotFound` is wrapped in `UnrecoverableMessageHandlingException`: no retries for orders Shopware does not know.
+- Known gap: if the print succeeds but `markInProgress()` fails (Shopware API error), the retry prints the receipt again.
 
 ### Printing
 
@@ -100,7 +110,7 @@ Auth is OAuth client credentials. `config/services/shopware.yaml` defines a seco
 
 ## Environment
 
-Copy `.env` to `.env.local`. Required: `SHOPWARE_HOST`, `SHOPWARE_CLIENT_ID`, `SHOPWARE_CLIENT_SECRET`, `PRINTER_DSN` (see the table above; `.env` defaults to `file:///dev/null`), `DATA_DIR` (relative to project dir, default `/data/receipts/`). `DATABASE_URL` points at SQLite and only backs the Messenger queue; there are no Doctrine entities, `doctrine.yaml` maps `src/Domain` but nothing is annotated.
+Copy `.env` to `.env.local`. Required: `SHOPWARE_HOST`, `SHOPWARE_CLIENT_ID`, `SHOPWARE_CLIENT_SECRET`, `PRINTER_DSN` (see the table above; `.env` defaults to `file:///dev/null`), `DATA_DIR` (relative to project dir, default `/data/receipts/`). `DATABASE_URL` points at SQLite and backs the Messenger queue plus the `print_job` table; run `bin/console doctrine:schema:update --force` after checkout and after changes to `Domain/PrintJob/PrintJob.php` (the messenger table is auto-created, `print_job` is not).
 
 ## Conventions
 
