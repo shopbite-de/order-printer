@@ -13,52 +13,72 @@ use Veliu\OrderPrinter\Domain\Command\PrintOpenOrdersCommand;
 use Veliu\OrderPrinter\Domain\Command\PrintOpenOrdersHandler;
 use Veliu\OrderPrinter\Domain\Command\PrintOrderCommand;
 use Veliu\OrderPrinter\Domain\Order\OrderRepositoryInterface;
+use Veliu\OrderPrinter\Domain\PrintJob\PrintJobRepositoryInterface;
 
 #[CoversClass(PrintOpenOrdersHandler::class)]
 final class PrintOpenOrdersHandlerTest extends TestCase
 {
     private OrderRepositoryInterface&MockObject $orderRepository;
+    private PrintJobRepositoryInterface&MockObject $printJobs;
     private MessageBusInterface&MockObject $messageBus;
     private PrintOpenOrdersHandler $handler;
 
+    #[\Override]
     protected function setUp(): void
     {
         $this->orderRepository = $this->createMock(OrderRepositoryInterface::class);
+        $this->printJobs = $this->createMock(PrintJobRepositoryInterface::class);
         $this->messageBus = $this->createMock(MessageBusInterface::class);
-        $this->handler = new PrintOpenOrdersHandler(
-            $this->orderRepository,
-            $this->messageBus
-        );
+        $this->handler = new PrintOpenOrdersHandler($this->orderRepository, $this->printJobs, $this->messageBus);
     }
 
-    public function testInvoke(): void
+    public function testQueuesAPrintJobForEveryOpenOrder(): void
     {
-        // Arrange
-        $orderNumbers = ['ORDER-001', 'ORDER-002', 'ORDER-003'];
-        $markInProgress = true;
-        $command = new PrintOpenOrdersCommand($markInProgress);
+        $this->orderRepository->method('findNewNumbers')->willReturn(['ORDER-001', 'ORDER-002']);
+        $this->printJobs->method('isPending')->willReturn(false);
 
-        $this->orderRepository
-            ->expects(self::once())
-            ->method('findNewNumbers')
-            ->willReturn($orderNumbers);
+        $started = [];
+        $this->printJobs->expects(self::exactly(2))->method('start')
+            ->willReturnCallback(function (string $orderNumber) use (&$started): void { $started[] = $orderNumber; });
 
-        $this->messageBus
-            ->expects(self::exactly(count($orderNumbers)))
-            ->method('dispatch')
-            ->willReturnCallback(function (PrintOrderCommand $command) use ($markInProgress) {
-                static $index = 0;
-                $expectedOrderNumbers = ['ORDER-001', 'ORDER-002', 'ORDER-003'];
-
-                self::assertSame($expectedOrderNumbers[$index], $command->orderNumber);
-                self::assertSame($markInProgress, $command->markInProgress);
-
-                ++$index;
+        $dispatched = [];
+        $this->messageBus->expects(self::exactly(2))->method('dispatch')
+            ->willReturnCallback(function (PrintOrderCommand $command) use (&$dispatched): Envelope {
+                $dispatched[] = $command;
 
                 return new Envelope($command);
             });
 
-        // Act
-        $this->handler->__invoke($command);
+        ($this->handler)(new PrintOpenOrdersCommand(true));
+
+        self::assertSame(['ORDER-001', 'ORDER-002'], $started);
+        self::assertSame(['ORDER-001', 'ORDER-002'], array_map(static fn (PrintOrderCommand $c) => $c->orderNumber, $dispatched));
+        self::assertSame([true, true], array_map(static fn (PrintOrderCommand $c) => $c->markInProgress, $dispatched));
+    }
+
+    public function testSkipsOrdersWhosePrintJobIsStillPending(): void
+    {
+        $this->orderRepository->method('findNewNumbers')->willReturn(['PENDING', 'FRESH']);
+        $this->printJobs->method('isPending')->willReturnMap([['PENDING', true], ['FRESH', false]]);
+
+        $this->printJobs->expects(self::once())->method('start')->with('FRESH');
+        $this->messageBus->expects(self::once())->method('dispatch')
+            ->with(self::callback(static fn (PrintOrderCommand $c) => 'FRESH' === $c->orderNumber && false === $c->markInProgress))
+            ->willReturnCallback(static fn (object $m) => new Envelope($m));
+
+        ($this->handler)(new PrintOpenOrdersCommand(false));
+    }
+
+    public function testReleasesTheJobWhenSynchronousDispatchFails(): void
+    {
+        $this->orderRepository->method('findNewNumbers')->willReturn(['ORDER-001']);
+        $this->printJobs->method('isPending')->willReturn(false);
+        $this->printJobs->expects(self::once())->method('start')->with('ORDER-001');
+        $this->messageBus->method('dispatch')->willThrowException($failure = new \RuntimeException('printer down'));
+        $this->printJobs->expects(self::once())->method('finish')->with('ORDER-001');
+
+        $this->expectExceptionObject($failure);
+
+        ($this->handler)(new PrintOpenOrdersCommand(true));
     }
 }

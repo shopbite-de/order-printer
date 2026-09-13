@@ -35,9 +35,10 @@ A Symfony-based microservice that automatically fetches open orders from Shopwar
    ```
    Edit `.env.local` and provide your Shopware API credentials and printer name.
 
-4. **Initialize database**:
+4. **Initialize database** (queue and print-job tracking, run again after updates):
    ```bash
    bin/console doctrine:database:create
+   bin/console doctrine:schema:update --force
    ```
 
 ## Configuration
@@ -64,3 +65,21 @@ bin/console messenger:consume scheduler_default
 # Run the worker to process print jobs
 bin/console messenger:consume async
 ```
+
+## Failure handling
+
+Short printer outages (Pi reboot, restaurant WLAN, paper out) are expected, so a print job is never dropped after one failed attempt:
+
+- **Retries with backoff.** A failed print job is retried 10 times: after 10 s, 20 s, 40 s, 80 s, 160 s and then every 5 minutes, about 30 minutes in total (`retry_strategy` in `config/packages/messenger.yaml`).
+- **The order stays `open` in Shopware** until the receipt was actually printed. Only a successful print marks it as in progress.
+- **No duplicates.** The 10-second poll skips orders that already have a queued or retrying print job (tracked in the `print_job` table). When the printer comes back, each order is printed exactly once.
+- **Permanent failure.** After the last retry the job is moved to the `failed` transport and an `error` log line with the order number is written, e.g. `Printing order 10556 failed permanently after 11 attempt(s): Cannot connect to printer "tcp://…"`. The order is released, so as long as it is still `open` in Shopware the next poll queues it again and a new retry window starts.
+
+Inspect or clean up permanently failed jobs with:
+
+```bash
+bin/console messenger:failed:show
+bin/console messenger:failed:remove <id>   # the poll re-queues open orders on its own, so prefer remove over retry
+```
+
+To reprint a single order by hand, use `bin/console app:print-order --order-number=<number>` (add `--no-mark-in-progress` to leave the Shopware state untouched).

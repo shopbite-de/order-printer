@@ -1,11 +1,21 @@
 framework:
     messenger:
-        # Uncomment this (and the failed transport below) to send failed messages to this transport for later handling.
+        # Messages that failed permanently are kept here for inspection (messenger:failed:show).
         failure_transport: failed
 
         transports:
             # https://symfony.com/doc/current/messenger.html#transport-configuration
-            async: '%env(MESSENGER_TRANSPORT_DSN)%'
+            async:
+                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+                # Short printer outages are normal (Pi reboots, restaurant WLAN, paper out):
+                # retry 10 times with exponential backoff 10s, 20s, 40s ... capped at 5min,
+                # about 30 minutes in total, before a print job fails permanently.
+                retry_strategy:
+                    max_retries: 10
+                    delay: 10000
+                    multiplier: 2
+                    max_delay: 300000
+                    jitter: 0
             failed: 'doctrine://default?queue_name=failed'
             sync: 'sync://'
 
@@ -17,10 +27,13 @@ when@test:
     framework:
         messenger:
             transports:
-                async: 'in-memory://'
+                async:
+                    dsn: 'in-memory://'
+                failed: 'in-memory://'
 
 when@dev:
     framework:
         messenger:
             transports:
-                async: 'sync://'
+                async:
+                    dsn: 'sync://'
