@@ -10,18 +10,13 @@ use Mike42\Escpos\PrintConnectors\NetworkPrintConnector;
 use Mike42\Escpos\PrintConnectors\PrintConnector;
 
 /**
- * Builds the printer connector from a DSN.
- *
- * Supported schemes:
- *  - file://<path>            local device or file, e.g. file:///dev/usb/lp0
- *  - tcp://<host>[:<port>]    raw ESC/POS over TCP, port defaults to 9100
- *  - dummy://                 discards output (deployments without a printer)
+ * Builds the printer connector from a DSN, see PrinterDsn for the supported schemes.
  *
  * @psalm-api
  */
 final readonly class PrintConnectorFactory
 {
-    public const int DEFAULT_PORT = 9100;
+    public const int DEFAULT_PORT = PrinterDsn::DEFAULT_PORT;
     public const int DEFAULT_CONNECT_TIMEOUT = 5;
 
     /** @psalm-param positive-int $connectTimeout connect timeout in seconds for tcp:// */
@@ -36,34 +31,20 @@ final readonly class PrintConnectorFactory
      */
     public function create(string $dsn): PrintConnector
     {
-        if ('dummy://' === $dsn) {
+        $printer = PrinterDsn::parse($dsn);
+
+        if (PrinterScheme::Dummy === $printer->scheme) {
             return new DummyPrintConnector();
         }
 
-        if (str_starts_with($dsn, 'file://')) {
-            $path = substr($dsn, \strlen('file://'));
-            if ('' === $path) {
-                throw new \InvalidArgumentException(sprintf('Printer DSN "%s" is missing a file path.', $dsn));
-            }
-
-            return new FilePrintConnector($path);
+        if (PrinterScheme::File === $printer->scheme) {
+            return new FilePrintConnector($printer->path ?? throw new \LogicException('file:// DSN without path'));
         }
 
-        if (str_starts_with($dsn, 'tcp://')) {
-            $parts = parse_url($dsn);
-            $host = \is_array($parts) ? ($parts['host'] ?? '') : '';
-            if ('' === $host) {
-                throw new \InvalidArgumentException(sprintf('Printer DSN "%s" is missing a host.', $dsn));
-            }
-            $port = \is_array($parts) ? ($parts['port'] ?? self::DEFAULT_PORT) : self::DEFAULT_PORT;
-
-            try {
-                return new NetworkPrintConnector($host, $port, $this->connectTimeout);
-            } catch (\Exception $e) {
-                throw new \RuntimeException(sprintf('Cannot connect to printer "%s": %s', $dsn, $e->getMessage()), 0, $e);
-            }
+        try {
+            return new NetworkPrintConnector($printer->host ?? throw new \LogicException('tcp:// DSN without host'), $printer->port, $this->connectTimeout);
+        } catch (\Exception $e) {
+            throw new \RuntimeException(sprintf('Cannot connect to printer "%s": %s', $dsn, $e->getMessage()), 0, $e);
         }
-
-        throw new \InvalidArgumentException(sprintf('Unsupported printer DSN "%s". Expected file://<path>, tcp://<host>[:<port>] or dummy://.', $dsn));
     }
 }

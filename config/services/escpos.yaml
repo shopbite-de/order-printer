@@ -4,6 +4,8 @@ services:
         autoconfigure: true
 
     Veliu\OrderPrinter\Infra\EscPos\PrintConnectorFactory: ~
+    Veliu\OrderPrinter\Infra\EscPos\PrinterChecker: ~
+    Veliu\OrderPrinter\Infra\EscPos\TestReceiptPrinter: ~
 
     Veliu\OrderPrinter\Infra\EscPos\PrintProcessor: ~
     Veliu\OrderPrinter\Domain\Service\PrintOrderProcessorInterface: '@Veliu\OrderPrinter\Infra\EscPos\PrintProcessor'

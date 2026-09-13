@@ -52,6 +52,7 @@ The following environment variables are required in your `.env.local`:
   - `tcp://192.168.1.50:9100` — network printer or Pi gateway speaking raw ESC/POS; the port defaults to 9100 and connecting times out after 5 seconds
   - `dummy://` — no printer; receipts are only archived in `DATA_DIR`
 - `DATA_DIR`: Directory (relative to the project root) where a copy of every printed receipt is stored.
+- `SHOP_NAME` (optional): Restaurant name printed on `printer:test` receipts. Defaults to the domain of `SHOPWARE_HOST`.
 
 ## Usage
 
@@ -64,6 +65,25 @@ bin/console messenger:consume scheduler_default
 # Run the worker to process print jobs
 bin/console messenger:consume async
 ```
+
+## Checking the printer
+
+Two commands verify the chain server → network → printer without a real order:
+
+```bash
+bin/console printer:check                               # reachability only, prints nothing, exit code 0/1
+bin/console printer:check --dsn=tcp://100.64.0.5:9100   # check a different printer than PRINTER_DSN
+bin/console printer:test                                # prints a test receipt through the configured printer
+bin/console printer:test --dsn=tcp://100.64.0.5:9100
+```
+
+- `printer:check` opens a TCP connection for `tcp://` (3 s timeout) or checks that the device file exists and is writable for `file://`. It answers in under 5 seconds even when the host is down, so it works as a Docker health check and as a heartbeat source:
+  ```dockerfile
+  HEALTHCHECK --interval=60s --timeout=10s CMD php bin/console printer:check || exit 1
+  ```
+- `printer:test` prints a receipt with the shop name (`SHOP_NAME`, optional, defaults to the `SHOPWARE_HOST` domain), the current time, the container hostname and the DSN, using the same connector as real receipts.
+
+Both exit with 1 and a readable message on failure.
 
 ## Failure handling
 

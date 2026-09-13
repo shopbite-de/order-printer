@@ -42,6 +42,8 @@ bin/console app:print-order --order-number=10556 [--no-mark-in-progress]   # one
 bin/console app:print-order --all-open                                       # everything in state open
 bin/console messenger:consume scheduler_default                              # poll loop (every 10s)
 bin/console messenger:consume async                                          # worker (prod only, see below)
+bin/console printer:check [--dsn=tcp://host:9100]                            # reachability only, exit 0/1, < 5 s (health check)
+bin/console printer:test  [--dsn=tcp://host:9100]                            # prints a test receipt via the real connector
 ```
 
 CI (`.github/workflows/ci.yml`) additionally runs `php -l` on every file, `php-cs-fixer --dry-run`, `composer audit`, and `doctrine:schema:validate`. PHPUnit is configured with `failOnDeprecation/Notice/Warning=true`, so deprecations from `src/` fail the build.
@@ -92,7 +94,7 @@ The printer connector comes from `Infra\EscPos\PrintConnectorFactory::create(PRI
 | `tcp://<host>[:<port>]` (port defaults to 9100) | `NetworkPrintConnector`, 5 s connect timeout, unreachable host throws `RuntimeException` |
 | `dummy://` | `DummyPrintConnector`, output discarded |
 
-Anything else throws `InvalidArgumentException`. There is deliberately no CUPS/`lp` path: the production container has no CUPS. `PrintProcessor` takes the factory as an optional last constructor argument, so tests build it with a `dummy://` or `file://php://memory` DSN and no mocks.
+Anything else throws `InvalidArgumentException`. DSN parsing lives in `PrinterDsn::parse()` (`PrinterScheme` enum), shared with `PrinterChecker` (reachability without printing: TCP connect with 3 s timeout, `file_exists` + `is_writable` for files, `php://` wrappers skipped) and `TestReceiptPrinter` (the `printer:test` receipt: `SHOP_NAME` or the `SHOPWARE_HOST` domain, time in Europe/Berlin, `gethostname()`, DSN). The commands in `Adapter/Command/` map exceptions to exit code 1 with the message. There is deliberately no CUPS/`lp` path: the production container has no CUPS. `PrintProcessor` takes the factory as an optional last constructor argument, so tests build it with a `dummy://` or `file://php://memory` DSN and no mocks.
 
 `PrintProcessor` calls `OrderRepository::markInProgress()` only when `markInProgress` is true **and** `Order::$isNew` (Shopware state `open`), so reprinting an in-progress order never touches state.
 
@@ -110,7 +112,7 @@ Auth is OAuth client credentials. `config/services/shopware.yaml` defines a seco
 
 ## Environment
 
-Copy `.env` to `.env.local`. Required: `SHOPWARE_HOST`, `SHOPWARE_CLIENT_ID`, `SHOPWARE_CLIENT_SECRET`, `PRINTER_DSN` (see the table above; `.env` defaults to `file:///dev/null`), `DATA_DIR` (relative to project dir, default `/data/receipts/`). `DATABASE_URL` points at SQLite and backs the Messenger queue (`messenger_messages`) and the deduplication locks (`lock_keys`); both tables are created on first use. There are no Doctrine entities.
+Copy `.env` to `.env.local`. Required: `SHOPWARE_HOST`, `SHOPWARE_CLIENT_ID`, `SHOPWARE_CLIENT_SECRET`, `PRINTER_DSN` (see the table above; `.env` defaults to `file:///dev/null`), `DATA_DIR` (relative to project dir, default `/data/receipts/`). Optional: `SHOP_NAME` for test receipts (read with `env(default::SHOP_NAME)`, so it may be absent). `DATABASE_URL` points at SQLite and backs the Messenger queue (`messenger_messages`) and the deduplication locks (`lock_keys`); both tables are created on first use. There are no Doctrine entities.
 
 ## Conventions
 
