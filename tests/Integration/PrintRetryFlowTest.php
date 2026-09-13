@@ -49,6 +49,7 @@ final class PrintRetryFlowTest extends KernelTestCase
     private LockFactory $lockFactory;
     private EventDispatcher $dispatcher;
     private int $printerPort;
+    private ?string $originalPrinterDsn = null;
     /** @var resource|null */
     private $printerServer = null;
 
@@ -56,6 +57,7 @@ final class PrintRetryFlowTest extends KernelTestCase
     protected function setUp(): void
     {
         $this->printerPort = self::reserveClosedPort();
+        $this->originalPrinterDsn = $_SERVER['PRINTER_DSN'] ?? null;
         $_SERVER['PRINTER_DSN'] = $_ENV['PRINTER_DSN'] = sprintf('tcp://127.0.0.1:%d', $this->printerPort);
 
         self::bootKernel();
@@ -103,7 +105,12 @@ final class PrintRetryFlowTest extends KernelTestCase
     {
         $this->stopPrinter();
         self::cleanReceiptDir();
-        unset($_SERVER['PRINTER_DSN'], $_ENV['PRINTER_DSN']);
+        // Restore the value Dotenv loaded from .env; other tests boot the kernel with it.
+        if (null === $this->originalPrinterDsn) {
+            unset($_SERVER['PRINTER_DSN'], $_ENV['PRINTER_DSN']);
+        } else {
+            $_SERVER['PRINTER_DSN'] = $_ENV['PRINTER_DSN'] = $this->originalPrinterDsn;
+        }
 
         parent::tearDown();
     }

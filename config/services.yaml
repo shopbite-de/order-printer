@@ -9,6 +9,8 @@ services:
 
     # CLI COMMANDS
     Veliu\OrderPrinter\Adapter\Command\PrintOrderCommand: ~
+    Veliu\OrderPrinter\Adapter\Command\PrinterCheckCommand: ~
+    Veliu\OrderPrinter\Adapter\Command\PrinterTestCommand: ~
 
     Veliu\OrderPrinter\Infra\Symfony\Scheduler\OpenOrderProvider: ~
 
