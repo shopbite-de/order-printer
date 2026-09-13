@@ -15,7 +15,7 @@ use Veliu\OrderPrinter\Infra\EscPos\PrintProcessor;
 
 class PrintProcessorTest extends TestCase
 {
-    private const string PRINTER_NAME = '/tmp/test_printer';
+    private const string PRINTER_DSN = 'dummy://';
     private const string DATA_DIR = '/tmp/test_data/';
     private const string PROJECT_DIR = '/tmp/test_project';
 
@@ -28,7 +28,7 @@ class PrintProcessorTest extends TestCase
         $this->orderRepository = $this->createMock(OrderRepositoryInterface::class);
 
         $this->printProcessor = new PrintProcessor(
-            self::PRINTER_NAME,
+            self::PRINTER_DSN,
             self::DATA_DIR,
             self::PROJECT_DIR,
             $this->orderRepository

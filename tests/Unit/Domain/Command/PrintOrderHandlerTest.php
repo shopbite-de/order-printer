@@ -12,45 +12,29 @@ use Veliu\OrderPrinter\Domain\Command\PrintOrderCommand;
 use Veliu\OrderPrinter\Domain\Command\PrintOrderHandler;
 use Veliu\OrderPrinter\Domain\Order\Order;
 use Veliu\OrderPrinter\Domain\Order\OrderRepositoryInterface;
-use Veliu\OrderPrinter\Domain\Receipt\Receipt;
-use Veliu\OrderPrinter\Domain\Receipt\ReceiptGeneratorInterface;
-use Veliu\OrderPrinter\Domain\Receipt\ReceiptPrinterInterface;
-use Veliu\OrderPrinter\Domain\Receipt\ReceiptSaverInterface;
-use Veliu\OrderPrinter\Domain\Service\DefaultPrintOrderProcessor;
+use Veliu\OrderPrinter\Domain\Service\PrintOrderProcessorInterface;
 
 #[CoversClass(PrintOrderHandler::class)]
 final class PrintOrderHandlerTest extends TestCase
 {
     private OrderRepositoryInterface&MockObject $orderRepository;
-    private ReceiptGeneratorInterface&MockObject $receiptGenerator;
-    private ReceiptSaverInterface&MockObject $receiptSaver;
-    private ReceiptPrinterInterface&MockObject $receiptPrinter;
+    private PrintOrderProcessorInterface&MockObject $printOrderProcessor;
     private PrintOrderHandler $handler;
 
     #[\Override]
     protected function setUp(): void
     {
         $this->orderRepository = $this->createMock(OrderRepositoryInterface::class);
-        $this->receiptGenerator = $this->createMock(ReceiptGeneratorInterface::class);
-        $this->receiptSaver = $this->createMock(ReceiptSaverInterface::class);
-        $this->receiptPrinter = $this->createMock(ReceiptPrinterInterface::class);
-
-        $printOrderProcessor = new DefaultPrintOrderProcessor(
-            $this->orderRepository,
-            $this->receiptGenerator,
-            $this->receiptSaver,
-            $this->receiptPrinter
-        );
+        $this->printOrderProcessor = $this->createMock(PrintOrderProcessorInterface::class);
 
         $this->handler = new PrintOrderHandler(
             $this->orderRepository,
-            $printOrderProcessor
+            $this->printOrderProcessor
         );
     }
 
-    public function testInvokeProcessesOrderCorrectly(): void
+    public function testInvokeLoadsOrderAndHandsItToTheProcessor(): void
     {
-        // Arrange
         $orderNumber = 'ORDER-123';
         $command = new PrintOrderCommand($orderNumber, true);
 
@@ -67,38 +51,17 @@ final class PrintOrderHandlerTest extends TestCase
             new \DateTimeImmutable('2025-07-31')
         );
 
-        $receipt = new Receipt('123456', 'Test');
-
-        // Set up expectations
         $this->orderRepository
             ->expects($this->once())
             ->method('getByOrderNumber')
             ->with($orderNumber)
             ->willReturn($order);
 
-        $this->receiptGenerator
+        $this->printOrderProcessor
             ->expects($this->once())
-            ->method('fromOrder')
-            ->with($order)
-            ->willReturn($receipt);
+            ->method('__invoke')
+            ->with($order, true);
 
-        $this->receiptSaver
-            ->expects($this->once())
-            ->method('save')
-            ->with($receipt)
-            ->willReturn('/path/to/receipt.pdf');
-
-        $this->receiptPrinter
-            ->expects($this->once())
-            ->method('print')
-            ->with($receipt);
-
-        $this->orderRepository
-            ->expects($this->once())
-            ->method('markInProgress')
-            ->with($order);
-
-        // Act
         ($this->handler)($command);
     }
 }

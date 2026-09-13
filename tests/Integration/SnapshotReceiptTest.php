@@ -14,7 +14,7 @@ class SnapshotReceiptTest extends TestCase
 {
     private const string PROJECT_DIR = __DIR__.'/../../';
     private const string DATA_DIR = 'var/tests/receipts/';
-    private const string PRINTER_NAME = 'php://memory';
+    private const string PRINTER_DSN = 'file://php://memory';
 
     #[\Override]
     protected function setUp(): void
@@ -60,7 +60,7 @@ class SnapshotReceiptTest extends TestCase
 
             $orderRepository = $this->createMock(OrderRepositoryInterface::class);
             $processor = new PrintProcessor(
-                self::PRINTER_NAME,
+                self::PRINTER_DSN,
                 self::DATA_DIR,
                 self::PROJECT_DIR,
                 $orderRepository

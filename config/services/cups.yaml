@@ -1,8 +1,0 @@
-services:
-    _defaults:
-        autowire: true
-        autoconfigure: true
-
-    Veliu\OrderPrinter\Infra\Cups\ReceiptPrinter: ~
-    Veliu\OrderPrinter\Domain\Receipt\ReceiptPrinterInterface: '@Veliu\OrderPrinter\Infra\Cups\ReceiptPrinter'
-

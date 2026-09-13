@@ -25,14 +25,15 @@ final readonly class PrintProcessor implements PrintOrderProcessorInterface
 
     /** @psalm-api  */
     public function __construct(
-        #[Autowire(env: 'PRINTER_NAME')]
-        private string $printerName,
+        #[Autowire(env: 'PRINTER_DSN')]
+        private string $printerDsn,
         #[Autowire(env: 'DATA_DIR')]
         string $dataDirectory,
         /* @psalm-param non-empty-string $projectDir */
         #[Autowire(param: 'kernel.project_dir')]
         string $projectDir,
         private OrderRepositoryInterface $orderRepository,
+        private PrintConnectorFactory $connectorFactory = new PrintConnectorFactory(),
     ) {
         $this->fileDirectory = $projectDir.$dataDirectory;
         $this->receiptPositionGenerator = new ReceiptPositionGenerator();
@@ -45,7 +46,7 @@ final readonly class PrintProcessor implements PrintOrderProcessorInterface
         $file = $this->fileDirectory.sprintf('%s_%s.txt', $order->number, $order->createdAt->format('Y-m-d_H-i-s'));
 
         $connector = new MultiplePrintConnector(
-            new FilePrintConnector($this->printerName),
+            $this->connectorFactory->create($this->printerDsn),
             new FilePrintConnector($file),
         );
 
