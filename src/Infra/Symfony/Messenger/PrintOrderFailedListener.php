@@ -9,11 +9,10 @@ use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
 use Symfony\Component\Messenger\Event\WorkerMessageFailedEvent;
 use Symfony\Component\Messenger\Stamp\RedeliveryStamp;
 use Veliu\OrderPrinter\Domain\Command\PrintOrderCommand;
-use Veliu\OrderPrinter\Domain\PrintJob\PrintJobRepositoryInterface;
 
 /**
- * Logs failed print jobs with their order number and releases the order once
- * Messenger gives up, so the scheduler poll queues it again as long as it is open.
+ * Logs failed print jobs with their order number: a warning per retried attempt and an
+ * error once Messenger gives up, so monitoring can alert on receipts that were not printed.
  *
  * Runs after Messenger's retry listener (priority 100) has decided whether to retry.
  *
@@ -23,7 +22,6 @@ use Veliu\OrderPrinter\Domain\PrintJob\PrintJobRepositoryInterface;
 final readonly class PrintOrderFailedListener
 {
     public function __construct(
-        private PrintJobRepositoryInterface $printJobs,
         private LoggerInterface $logger,
     ) {
     }
@@ -50,7 +48,5 @@ final readonly class PrintOrderFailedListener
         }
 
         $this->logger->error('Printing order {orderNumber} failed permanently after {attempts} attempt(s): {error}', $context);
-
-        $this->printJobs->finish($message->orderNumber);
     }
 }

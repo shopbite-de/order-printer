@@ -21,6 +21,7 @@
         "symfony/flex": "^2.11.0",
         "symfony/framework-bundle": "^8.1.6",
         "symfony/http-client": "^8.1.6",
+        "symfony/lock": "^8",
         "symfony/messenger": "^8.1.6",
         "symfony/process": "^8.1.6",
         "symfony/runtime": "^8.1.0",

@@ -1,0 +1,6 @@
+framework:
+    # Deduplication locks for print jobs (see PrintOpenOrdersHandler) live in the same SQLite
+    # database as the Messenger queue, in a "lock_keys" table that the store creates on first use.
+    # A shared, token-based store is required: the scheduler worker acquires the lock and the
+    # print worker releases it, so "flock" (process-bound, no TTL) would not work.
+    lock: 'doctrine.dbal.default_connection'

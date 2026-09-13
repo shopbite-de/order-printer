@@ -7,75 +7,81 @@ namespace Veliu\OrderPrinter\Tests\Unit\Domain\Command;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Lock\Key;
+use Symfony\Component\Lock\LockFactory;
+use Symfony\Component\Lock\SharedLockInterface;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\Messenger\Stamp\DeduplicateStamp;
 use Veliu\OrderPrinter\Domain\Command\PrintOpenOrdersCommand;
 use Veliu\OrderPrinter\Domain\Command\PrintOpenOrdersHandler;
 use Veliu\OrderPrinter\Domain\Command\PrintOrderCommand;
 use Veliu\OrderPrinter\Domain\Order\OrderRepositoryInterface;
-use Veliu\OrderPrinter\Domain\PrintJob\PrintJobRepositoryInterface;
 
 #[CoversClass(PrintOpenOrdersHandler::class)]
 final class PrintOpenOrdersHandlerTest extends TestCase
 {
     private OrderRepositoryInterface&MockObject $orderRepository;
-    private PrintJobRepositoryInterface&MockObject $printJobs;
     private MessageBusInterface&MockObject $messageBus;
+    private LockFactory&MockObject $lockFactory;
     private PrintOpenOrdersHandler $handler;
 
     #[\Override]
     protected function setUp(): void
     {
         $this->orderRepository = $this->createMock(OrderRepositoryInterface::class);
-        $this->printJobs = $this->createMock(PrintJobRepositoryInterface::class);
         $this->messageBus = $this->createMock(MessageBusInterface::class);
-        $this->handler = new PrintOpenOrdersHandler($this->orderRepository, $this->printJobs, $this->messageBus);
+        $this->lockFactory = $this->createMock(LockFactory::class);
+        $this->handler = new PrintOpenOrdersHandler($this->orderRepository, $this->messageBus, $this->lockFactory);
     }
 
-    public function testQueuesAPrintJobForEveryOpenOrder(): void
+    public function testQueuesADeduplicatedPrintJobForEveryOpenOrder(): void
     {
         $this->orderRepository->method('findNewNumbers')->willReturn(['ORDER-001', 'ORDER-002']);
-        $this->printJobs->method('isPending')->willReturn(false);
-
-        $started = [];
-        $this->printJobs->expects(self::exactly(2))->method('start')
-            ->willReturnCallback(function (string $orderNumber) use (&$started): void { $started[] = $orderNumber; });
 
         $dispatched = [];
         $this->messageBus->expects(self::exactly(2))->method('dispatch')
-            ->willReturnCallback(function (PrintOrderCommand $command) use (&$dispatched): Envelope {
-                $dispatched[] = $command;
+            ->willReturnCallback(function (PrintOrderCommand $command, array $stamps) use (&$dispatched): Envelope {
+                $dispatched[] = [$command, $stamps];
 
-                return new Envelope($command);
+                return new Envelope($command, $stamps);
             });
 
         ($this->handler)(new PrintOpenOrdersCommand(true));
 
-        self::assertSame(['ORDER-001', 'ORDER-002'], $started);
-        self::assertSame(['ORDER-001', 'ORDER-002'], array_map(static fn (PrintOrderCommand $c) => $c->orderNumber, $dispatched));
-        self::assertSame([true, true], array_map(static fn (PrintOrderCommand $c) => $c->markInProgress, $dispatched));
+        self::assertSame(['ORDER-001', 'ORDER-002'], array_map(static fn (array $d) => $d[0]->orderNumber, $dispatched));
+        self::assertSame([true, true], array_map(static fn (array $d) => $d[0]->markInProgress, $dispatched));
+
+        foreach ($dispatched as [$command, $stamps]) {
+            self::assertCount(1, $stamps);
+            $stamp = $stamps[0];
+            self::assertInstanceOf(DeduplicateStamp::class, $stamp);
+            self::assertSame('print-order-'.$command->orderNumber, (string) $stamp->getKey());
+            self::assertSame(7200.0, $stamp->getTtl());
+            self::assertFalse($stamp->onlyDeduplicateInQueue(), 'the lock must be held through retries, not only while queued');
+        }
     }
 
-    public function testSkipsOrdersWhosePrintJobIsStillPending(): void
+    public function testPassesMarkInProgressFlagThrough(): void
     {
-        $this->orderRepository->method('findNewNumbers')->willReturn(['PENDING', 'FRESH']);
-        $this->printJobs->method('isPending')->willReturnMap([['PENDING', true], ['FRESH', false]]);
-
-        $this->printJobs->expects(self::once())->method('start')->with('FRESH');
+        $this->orderRepository->method('findNewNumbers')->willReturn(['ORDER-001']);
         $this->messageBus->expects(self::once())->method('dispatch')
-            ->with(self::callback(static fn (PrintOrderCommand $c) => 'FRESH' === $c->orderNumber && false === $c->markInProgress))
-            ->willReturnCallback(static fn (object $m) => new Envelope($m));
+            ->with(self::callback(static fn (PrintOrderCommand $c) => false === $c->markInProgress))
+            ->willReturnCallback(static fn (object $m, array $stamps) => new Envelope($m, $stamps));
 
         ($this->handler)(new PrintOpenOrdersCommand(false));
     }
 
-    public function testReleasesTheJobWhenSynchronousDispatchFails(): void
+    public function testReleasesTheLockWhenSynchronousDispatchFails(): void
     {
         $this->orderRepository->method('findNewNumbers')->willReturn(['ORDER-001']);
-        $this->printJobs->method('isPending')->willReturn(false);
-        $this->printJobs->expects(self::once())->method('start')->with('ORDER-001');
         $this->messageBus->method('dispatch')->willThrowException($failure = new \RuntimeException('printer down'));
-        $this->printJobs->expects(self::once())->method('finish')->with('ORDER-001');
+
+        $lock = $this->createMock(SharedLockInterface::class);
+        $lock->expects(self::once())->method('release');
+        $this->lockFactory->expects(self::once())->method('createLockFromKey')
+            ->with(self::callback(static fn (Key $key) => 'print-order-ORDER-001' === (string) $key))
+            ->willReturn($lock);
 
         $this->expectExceptionObject($failure);
 
