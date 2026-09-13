@@ -98,6 +98,22 @@ jobs:
                   php bin/console doctrine:schema:validate --skip-sync
                   php bin/console doctrine:schema:update --force --dump-sql --complete
 
+    docker:
+        name: Docker Image
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v6
+
+            - name: Build image
+              run: docker build -t order-printer:ci .
+
+            - name: Smoke test (entrypoint + printer:check with dummy://)
+              run: docker run --rm -e PRINTER_DSN=dummy:// order-printer:ci su-exec app php bin/console printer:check
+
+            - name: Image size
+              run: docker image inspect order-printer:ci --format 'uncompressed {{.Size}} bytes'
+
     security:
         name: Security Checks
         runs-on: ubuntu-latest

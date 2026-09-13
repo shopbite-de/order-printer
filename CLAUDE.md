@@ -44,6 +44,8 @@ bin/console messenger:consume scheduler_default                              # p
 bin/console messenger:consume async                                          # worker (prod only, see below)
 bin/console printer:check [--dsn=tcp://host:9100]                            # reachability only, exit 0/1, < 5 s (health check)
 bin/console printer:test  [--dsn=tcp://host:9100]                            # prints a test receipt via the real connector
+docker build -t order-printer:local .                                        # multi-stage image, see docs/docker.md
+docker compose up -d                                                         # needs APP_SECRET, SHOPWARE_*, PRINTER_DSN in the env
 ```
 
 CI (`.github/workflows/ci.yml`) additionally runs `php -l` on every file, `php-cs-fixer --dry-run`, `composer audit`, and `doctrine:schema:validate`. PHPUnit is configured with `failOnDeprecation/Notice/Warning=true`, so deprecations from `src/` fail the build.
@@ -71,7 +73,7 @@ OpenOrderProvider (#[AsSchedule], every 10s, handled inside the scheduler_defaul
 
 `PrintOpenOrdersCommand` is deliberately **not** routed to a transport: the scheduler worker runs the poll inline, a failed poll (Shopware down) is just logged and repeated 10 s later, never retried or sent to the failure transport. `PrintOrderCommand` carries `#[AsMessage(transport: 'async')]`. The `async` transport is Doctrine/SQLite (`data/queue_<env>.db`) in prod, `sync://` in dev, and `in-memory://` in test, so in dev `app:print-order` prints immediately without a worker.
 
-Production runs two supervisor programs (`dev-ops/supervisor/conf.d/message.consumer.conf`): one consuming `scheduler_default` (polling), one consuming `async` (printing).
+Production runs two supervisor programs, one consuming `scheduler_default` (polling), one consuming `async` (printing): in Docker via `docker/supervisord.conf` (logs to stdout, programs run as uid 1000 `app`, `docker/entrypoint.sh` runs `messenger:setup-transports` first), on a bare host via `dev-ops/supervisor/conf.d/message.consumer.conf`. The image (`Dockerfile`, `compose.yaml`, `docs/docker.md`) is built in CI as a smoke test; its `HEALTHCHECK` is `printer:check`. `composer install` runs on the runtime PHP inside the build, so a missing extension fails the build (that is how `bcmath` was found). Note: `doctrine:database:create --if-not-exists` does not work on SQLite, and DoctrineBundle 3 rejects `proxy_dir`, which had broken `APP_ENV=prod` until the Docker work.
 
 ### Retries and de-duplication
 
