@@ -1,0 +1,64 @@
+{
+  "tagOwners": {
+    "tag:server": ["autogroup:admin"],
+    "tag:printer": ["autogroup:admin"]
+  },
+
+  "grants": [
+    {
+      "src": ["tag:server"],
+      "dst": ["tag:printer"],
+      "ip": ["tcp:9100"]
+    },
+    {
+      "src": ["autogroup:admin"],
+      "dst": ["tag:printer"],
+      "ip": ["tcp:22", "tcp:9100"]
+    },
+    {
+      "src": ["autogroup:admin"],
+      "dst": ["tag:server"],
+      "ip": ["tcp:22"]
+    }
+  ],
+
+  "ssh": [
+    {
+      "action": "check",
+      "checkPeriod": "12h",
+      "src": ["autogroup:admin"],
+      "dst": ["tag:printer", "tag:server"],
+      "users": ["autogroup:nonroot", "root"]
+    }
+  ],
+
+  "tests": [
+    {
+      "src": "tag:server",
+      "accept": ["tag:printer:9100"],
+      "deny": ["tag:printer:22", "tag:printer:80"]
+    },
+    {
+      "src": "tag:printer",
+      "deny": ["tag:server:22", "tag:server:9100", "tag:printer:9100", "tag:printer:22"]
+    },
+    {
+      "src": "autogroup:admin",
+      "accept": ["tag:printer:22", "tag:printer:9100", "tag:server:22"]
+    }
+  ],
+
+  "sshTests": [
+    {
+      "src": "autogroup:admin",
+      "dst": ["tag:printer"],
+      "check": ["pi", "root"],
+      "deny": []
+    },
+    {
+      "src": "tag:server",
+      "dst": ["tag:printer"],
+      "deny": ["pi", "root"]
+    }
+  ]
+}

@@ -114,7 +114,8 @@ device file) without printing. The container is `healthy` when the printer answe
 1. Create a **Compose** service from this repository (branch `main`, compose file `compose.yaml`).
    Dokploy builds the image itself; no registry is needed.
 2. Set the environment variables from the table above in the service's *Environment* tab.
-   For a Pi on Tailscale use its Tailscale IP: `PRINTER_DSN=tcp://100.x.y.z:9100`.
+   For a Pi on Tailscale use its Tailscale IP: `PRINTER_DSN=tcp://100.x.y.z:9100`
+   (tailnet, tags and ACL: [tailscale.md](tailscale.md)).
 3. Deploy. Check *Logs* for `Consuming messages from transport "async"` and the health status.
 4. Send a test receipt: open a terminal on the service and run
    `su-exec app php bin/console printer:test`.
