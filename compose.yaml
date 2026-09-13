@@ -1,0 +1,29 @@
+# Reference for running the Order Printer as a container, e.g. on Dokploy (compose service,
+# build from this repository). All configuration comes from environment variables; on Dokploy
+# set them in the service's Environment tab. See docs/docker.md.
+services:
+  order-printer:
+    build: .
+    image: shopbite/order-printer:local
+    restart: unless-stopped
+    environment:
+      APP_SECRET: ${APP_SECRET:?set APP_SECRET to a random string}
+      SHOPWARE_HOST: ${SHOPWARE_HOST:?e.g. https://shopware.shopbite.de}
+      SHOPWARE_CLIENT_ID: ${SHOPWARE_CLIENT_ID:?Shopware integration client id}
+      SHOPWARE_CLIENT_SECRET: ${SHOPWARE_CLIENT_SECRET:?Shopware integration client secret}
+      # file:///dev/usb/lp0 | tcp://<pi-or-printer-ip>:9100 | dummy://
+      PRINTER_DSN: ${PRINTER_DSN:-dummy://}
+      # Optional: restaurant name on printer:test receipts
+      SHOP_NAME: ${SHOP_NAME:-}
+    volumes:
+      # SQLite queue + lock tables and a copy of every printed receipt
+      - order-printer-data:/app/data
+    # USB printer attached to this host (PRINTER_DSN=file:///dev/usb/lp0): map the device and
+    # add the host's "lp" group id so the unprivileged "app" user may write to it.
+    # devices:
+    #   - /dev/usb/lp0:/dev/usb/lp0
+    # group_add:
+    #   - "7"
+
+volumes:
+  order-printer-data:

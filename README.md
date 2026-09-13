@@ -9,9 +9,17 @@ A Symfony-based microservice that automatically fetches open orders from Shopwar
 - **ESC/POS Support**: Generates formatted receipts for thermal printers.
 - **Asynchronous Processing**: Uses Symfony Messenger for reliable print job handling.
 
+## Docker
+
+A multi-stage `Dockerfile` and a reference `compose.yaml` run both consumers under supervisor in one container, with a health check on `printer:check` and a volume for the SQLite queue and receipt copies. See [docs/docker.md](docs/docker.md) for build, environment variables, volumes and Dokploy setup.
+
+```bash
+APP_SECRET=... SHOPWARE_HOST=... SHOPWARE_CLIENT_ID=... SHOPWARE_CLIENT_SECRET=... PRINTER_DSN=dummy:// docker compose up -d
+```
+
 ## Requirements
 
-- PHP 8.5 or higher
+- PHP 8.5 or higher with `intl`, `mbstring`, `bcmath`, `pdo_sqlite` (or use the Docker image)
 - SQLite extension (for queue and local storage)
 - An ESC/POS printer: a local device file (e.g. `/dev/usb/lp0`) or a network printer / Raspberry Pi gateway listening on TCP port 9100. No CUPS required.
 
