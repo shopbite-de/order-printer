@@ -92,7 +92,7 @@ Anything else throws `InvalidArgumentException`. There is deliberately no CUPS/`
 
 ### Shopware Admin API client
 
-`Domain\Api\ClientInterface` + `RequestInterface` is a small hand-rolled PSR-18 wrapper (no Shopware SDK calls in practice despite `vin-sw/shopware-sdk` being required). Requests are value objects in `Infra/Shopware/Api/<Resource>/`, responses are parsed with `azjezz/psl` type shapes in `Infra/Shopware/ResponseObject/` — extend the `arrayShape()` there when you need a new field from the API.
+`Domain\Api\ClientInterface` + `RequestInterface` is a small hand-rolled PSR-18 wrapper (no Shopware SDK calls in practice despite `vin-sw/shopware-sdk` being required). Requests are value objects in `Infra/Shopware/Api/<Resource>/`, responses are parsed with `php-standard-library/php-standard-library` (the renamed `azjezz/psl`, `Psl\` namespace) type shapes in `Infra/Shopware/ResponseObject/` — extend the `arrayShape()` there when you need a new field from the API.
 
 Auth is OAuth client credentials. `config/services/shopware.yaml` defines a second, unaliased `Client` instance (`access.token.provider.client`) with `$accessTokenProvider: null` that `AccessTokenProvider` uses to fetch tokens; the main `Client` gets the provider and adds the `Authorization` header. Do not autowire `Client` directly into new services, inject `ClientInterface`. Tokens are cached in memory and refreshed 10 seconds before expiry using `ClockInterface`.
 
