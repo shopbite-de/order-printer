@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+#
+# First-boot provisioning of a Pi gateway: gives the Pi its customer identity.
+#
+# Reads CUSTOMER and TS_AUTHKEY (optionally WIFI_SSID, WIFI_PASSWORD) from the environment,
+# or from /boot/firmware/printer-gateway.env, a file copied onto the FAT boot partition when
+# the SD card is flashed. Sets the hostname printer-<customer>, joins the tailnet as
+# tag:printer, and deletes the file so the auth key does not stay on the card.
+#
+# Installed to /usr/local/sbin by dev-ops/pi-gateway/install.sh and run by
+# printer-gateway-provision.service on every boot; it exits immediately when there is
+# nothing to do.
+#
+set -euo pipefail
+
+log() { printf 'printer-gateway-provision: %s\n' "$*"; }
+
+ENV_FILE=""
+if [[ -z ${CUSTOMER:-} || -z ${TS_AUTHKEY:-} ]]; then
+    for f in /boot/firmware/printer-gateway.env /boot/printer-gateway.env; do
+        [[ -f $f ]] && { ENV_FILE=$f; break; }
+    done
+    if [[ -z $ENV_FILE ]]; then
+        log "no CUSTOMER/TS_AUTHKEY in the environment and no printer-gateway.env, nothing to do"
+        exit 0
+    fi
+    log "reading $ENV_FILE"
+    # The file may have been edited on Windows or macOS: drop CRs and a BOM.
+    set -a
+    # shellcheck disable=SC1090
+    source <(sed 's/\r$//; 1s/^\xEF\xBB\xBF//' "$ENV_FILE")
+    set +a
+fi
+
+: "${CUSTOMER:?CUSTOMER missing}"
+: "${TS_AUTHKEY:?TS_AUTHKEY missing}"
+CUSTOMER=$(tr '[:upper:]' '[:lower:]' <<<"$CUSTOMER" | tr -c 'a-z0-9-\n' '-')
+HOSTNAME_WANTED="printer-${CUSTOMER}"
+
+# --- WLAN (optional, Ethernet is preferred) -------------------------------------------------
+if [[ -n ${WIFI_SSID:-} ]] && command -v nmcli >/dev/null; then
+    if nmcli -t -f NAME connection show --active | grep -qx "$WIFI_SSID"; then
+        log "WLAN $WIFI_SSID already connected"
+    else
+        log "connecting to WLAN $WIFI_SSID"
+        rfkill unblock wifi 2>/dev/null || true
+        nmcli radio wifi on
+        for _ in 1 2 3 4 5 6; do
+            nmcli device wifi connect "$WIFI_SSID" password "${WIFI_PASSWORD:-}" && break
+            sleep 10
+        done
+    fi
+fi
+
+# --- hostname --------------------------------------------------------------------------------
+if [[ $(hostname) != "$HOSTNAME_WANTED" ]]; then
+    hostnamectl set-hostname "$HOSTNAME_WANTED"
+    sed -i "s/^127\.0\.1\.1\s.*/127.0.1.1\t$HOSTNAME_WANTED/" /etc/hosts
+    grep -q "^127.0.1.1" /etc/hosts || printf '127.0.1.1\t%s\n' "$HOSTNAME_WANTED" >>/etc/hosts
+    log "hostname set to $HOSTNAME_WANTED"
+fi
+
+# --- tailnet ---------------------------------------------------------------------------------
+ts_json=$(tailscale status --json 2>/dev/null || echo '{}')
+if [[ $(jq -r '.BackendState // ""' <<<"$ts_json") == Running \
+   && $(jq -r '.Self.Tags // [] | index("tag:printer") // "null"' <<<"$ts_json") != null \
+   && $(jq -r '.Self.HostName // ""' <<<"$ts_json") == "$HOSTNAME_WANTED" ]]; then
+    log "already in the tailnet as $HOSTNAME_WANTED"
+else
+    log "joining the tailnet as $HOSTNAME_WANTED"
+    # Fails when there is no network yet; the service retries.
+    tailscale up --reset --ssh --accept-dns=false \
+        --advertise-tags=tag:printer \
+        --hostname="$HOSTNAME_WANTED" \
+        --auth-key="$TS_AUTHKEY" \
+        --timeout=90s
+    tailscale set --auto-update >/dev/null 2>&1 || true
+    log "joined, tailnet IPv4 $(tailscale ip -4)"
+fi
+
+# --- forget the key --------------------------------------------------------------------------
+if [[ -n $ENV_FILE ]]; then
+    # FAT has no secure delete; overwrite the content before unlinking.
+    dd if=/dev/zero of="$ENV_FILE" bs=1k count=4 conv=notrunc status=none 2>/dev/null || true
+    rm -f "$ENV_FILE"
+    sync
+    log "$ENV_FILE removed"
+fi

@@ -6,24 +6,24 @@
 # nothing that is already in place. Nothing from a legacy order-printer installation (PHP,
 # supervisor, repository clone) is touched.
 #
-#   sudo TS_AUTHKEY=tskey-auth-... CUSTOMER=<shop> ./install.sh
+# Everything that is the same on every Pi (packages, Tailscale, udev rule, bridge, firewall,
+# updates, watchdog) is installed here. The customer identity (hostname, tailnet login) is
+# applied by printer-gateway-provision, either right away when CUSTOMER and TS_AUTHKEY are
+# given, or at first boot from /boot/firmware/printer-gateway.env on a flashed image.
 #
-# Variables:
-#   CUSTOMER         required, becomes the hostname printer-<shop> (also in the tailnet)
-#   TS_AUTHKEY       required on the first run (reusable, pre-authorized key with tag:printer)
-#   PRINTER_VENDOR   USB idVendor of the printer (4 hex digits); auto-detected when unset
-#   PRINTER_PRODUCT  USB idProduct of the printer (4 hex digits); auto-detected when unset
+#   sudo TS_AUTHKEY=tskey-auth-... CUSTOMER=<shop> ./install.sh   # set up this Pi for <shop>
+#   sudo ./install.sh                                              # bake an image, provision later
+#
+# Variables (all optional):
+#   CUSTOMER         becomes the hostname printer-<shop> (also in the tailnet)
+#   TS_AUTHKEY       reusable, pre-authorized key with tag:printer; needed with CUSTOMER
 #   ALLOW_LAN_SSH=1  keep port 22 open on every interface, not only in the tailnet
 #
 set -euo pipefail
 
-: "${CUSTOMER:?set CUSTOMER=<shop slug>, it becomes the hostname printer-<shop>}"
-CUSTOMER=${CUSTOMER//[^a-z0-9-]/-}
-HOSTNAME_WANTED="printer-${CUSTOMER}"
-PRINTER_VENDOR="${PRINTER_VENDOR:-}"
-PRINTER_PRODUCT="${PRINTER_PRODUCT:-}"
 ALLOW_LAN_SSH="${ALLOW_LAN_SSH:-0}"
 REBOOT_NEEDED=0
+SRC_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 step() { printf '\n==> %s\n' "$*"; }
 note() { printf '    %s\n' "$*"; }
@@ -56,67 +56,21 @@ apt-get install -y -qq --no-install-recommends socat nftables unattended-upgrade
 note "socat, nftables, unattended-upgrades, curl, jq installed"
 
 # ---------------------------------------------------------------------------------------------
-step "Hostname $HOSTNAME_WANTED"
-if [[ $(hostname) != "$HOSTNAME_WANTED" ]]; then
-    hostnamectl set-hostname "$HOSTNAME_WANTED"
-    sed -i "s/^127\.0\.1\.1\s.*/127.0.1.1\t$HOSTNAME_WANTED/" /etc/hosts
-    grep -q "^127.0.1.1" /etc/hosts || printf '127.0.1.1\t%s\n' "$HOSTNAME_WANTED" >>/etc/hosts
-    note "hostname set"
-else
-    note "already set"
-fi
-
-# ---------------------------------------------------------------------------------------------
 step "Tailscale"
 if ! command -v tailscale >/dev/null; then
     curl -fsSL https://tailscale.com/install.sh | sh >/dev/null
     note "tailscale installed"
 fi
 systemctl enable --now tailscaled >/dev/null 2>&1 || true
-
-ts_json=$(tailscale status --json 2>/dev/null || echo '{}')
-ts_state=$(jq -r '.BackendState // "NoState"' <<<"$ts_json")
-ts_tags=$(jq -r '.Self.Tags // [] | join(",")' <<<"$ts_json")
-ts_host=$(jq -r '.Self.HostName // ""' <<<"$ts_json")
-if [[ $ts_state == Running && $ts_tags == *tag:printer* && $ts_host == "$HOSTNAME_WANTED" ]]; then
-    note "already in the tailnet as $ts_host ($ts_tags)"
-else
-    : "${TS_AUTHKEY:?set TS_AUTHKEY=tskey-auth-... (reusable, pre-authorized, tag:printer)}"
-    tailscale up --reset --ssh --accept-dns=false \
-        --advertise-tags=tag:printer \
-        --hostname="$HOSTNAME_WANTED" \
-        --auth-key="$TS_AUTHKEY"
-    note "joined the tailnet"
-fi
-tailscale set --auto-update >/dev/null 2>&1 || true
-TS_IP=$(tailscale ip -4 2>/dev/null || echo "?")
-note "tailnet IPv4: $TS_IP"
+note "$(tailscale version | head -1), state $(tailscale status --json 2>/dev/null | jq -r '.BackendState // "unknown"')"
 
 # ---------------------------------------------------------------------------------------------
-step "USB printer"
-if [[ -z $PRINTER_VENDOR || -z $PRINTER_PRODUCT ]]; then
-    # Every USB interface of class 07 (printer); walk up to the device for its ids.
-    mapfile -t found < <(
-        for cls in /sys/bus/usb/devices/*/bInterfaceClass; do
-            [[ -r $cls && $(<"$cls") == 07 ]] || continue
-            dev=$(dirname "$cls")
-            dev=${dev%%:*}
-            printf '%s:%s\n' "$(<"$dev/idVendor")" "$(<"$dev/idProduct")"
-        done | sort -u
-    )
-    case ${#found[@]} in
-        0) die "no USB printer found; connect and switch it on, or set PRINTER_VENDOR and PRINTER_PRODUCT (see lsusb)" ;;
-        1) PRINTER_VENDOR=${found[0]%%:*}; PRINTER_PRODUCT=${found[0]##*:}; note "detected ${found[0]}" ;;
-        *) die "several USB printers found (${found[*]}); set PRINTER_VENDOR and PRINTER_PRODUCT" ;;
-    esac
-fi
-[[ $PRINTER_VENDOR =~ ^[0-9a-f]{4}$ && $PRINTER_PRODUCT =~ ^[0-9a-f]{4}$ ]] \
-    || die "PRINTER_VENDOR/PRINTER_PRODUCT must be 4 lowercase hex digits each (got $PRINTER_VENDOR:$PRINTER_PRODUCT)"
-
-# The usblp driver creates /dev/usb/lpN in a non-stable order. The rule links the printer
-# to /dev/bondrucker by its ids and asks systemd to start the bridge whenever it appears.
-if install_file /etc/udev/rules.d/99-bondrucker.rules <<RULE
-SUBSYSTEM=="usbmisc", KERNEL=="lp[0-9]*", ATTRS{idVendor}=="$PRINTER_VENDOR", ATTRS{idProduct}=="$PRINTER_PRODUCT", SYMLINK+="bondrucker", GROUP="lp", MODE="0660", TAG+="systemd", ENV{SYSTEMD_WANTS}="printer-bridge.service"
+step "USB printer -> /dev/bondrucker"
+# The usblp driver creates /dev/usb/lpN in a non-stable order. There is exactly one printer per
+# Pi, so every usblp device becomes /dev/bondrucker, whatever its vendor; the rule also asks
+# systemd to start the bridge whenever the printer appears.
+if install_file /etc/udev/rules.d/99-bondrucker.rules <<'RULE'
+SUBSYSTEM=="usbmisc", KERNEL=="lp[0-9]*", SYMLINK+="bondrucker", GROUP="lp", MODE="0660", TAG+="systemd", ENV{SYSTEMD_WANTS}="printer-bridge.service"
 RULE
 then
     udevadm control --reload
@@ -155,6 +109,41 @@ else
 fi
 
 # ---------------------------------------------------------------------------------------------
+step "Provisioning (hostname, tailnet login)"
+[[ -f $SRC_DIR/printer-gateway-provision ]] || die "$SRC_DIR/printer-gateway-provision missing; copy the whole dev-ops/pi-gateway directory"
+install_file /usr/local/sbin/printer-gateway-provision 0755 <"$SRC_DIR/printer-gateway-provision" || true
+# Runs on every boot, does nothing without /boot/firmware/printer-gateway.env; a failed attempt
+# (no network yet, key rejected) is retried every 30 s and the file stays until it succeeded.
+install_file /etc/systemd/system/printer-gateway-provision.service <<'UNIT' || true
+[Unit]
+Description=First-boot provisioning of the printer gateway (hostname, tailnet)
+After=network-online.target tailscaled.service
+Wants=network-online.target
+ConditionPathExistsGlob=/boot/*/printer-gateway.env
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/printer-gateway-provision
+Restart=on-failure
+RestartSec=30s
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable printer-gateway-provision.service >/dev/null 2>&1
+if [[ -n ${CUSTOMER:-} ]]; then
+    CUSTOMER="$CUSTOMER" TS_AUTHKEY="${TS_AUTHKEY:?set TS_AUTHKEY together with CUSTOMER}" /usr/local/sbin/printer-gateway-provision
+elif compgen -G "/boot/*/printer-gateway.env" >/dev/null; then
+    systemctl start printer-gateway-provision.service
+    note "started from printer-gateway.env, see: journalctl -u printer-gateway-provision"
+else
+    note "no CUSTOMER given: the Pi is provisioned at first boot from /boot/firmware/printer-gateway.env"
+fi
+HOSTNAME_NOW=$(hostname)
+TS_IP=$(tailscale ip -4 2>/dev/null || echo "-")
+
+# ---------------------------------------------------------------------------------------------
 step "Firewall (inbound only via tailscale0)"
 lan_ssh_rule=""
 [[ $ALLOW_LAN_SSH == 1 ]] && lan_ssh_rule='        tcp dport 22 accept comment "ALLOW_LAN_SSH=1"'
@@ -189,7 +178,7 @@ then
     nft -f /etc/nftables.conf
 fi
 systemctl enable --now nftables >/dev/null 2>&1
-note "active; SSH via 'tailscale ssh pi@$HOSTNAME_WANTED'$([[ $ALLOW_LAN_SSH == 1 ]] && echo ' and from the LAN')"
+note "active; SSH via 'tailscale ssh <user>@$HOSTNAME_NOW'$([[ $ALLOW_LAN_SSH == 1 ]] && echo ' and from the LAN')"
 
 # ---------------------------------------------------------------------------------------------
 step "Unattended security updates, reboot at 04:30 when required"
@@ -234,9 +223,9 @@ fi
 
 # ---------------------------------------------------------------------------------------------
 step "Done"
-note "hostname     $HOSTNAME_WANTED"
-note "tailnet IP   $TS_IP"
-note "printer      usb $PRINTER_VENDOR:$PRINTER_PRODUCT -> /dev/bondrucker"
+note "hostname     $HOSTNAME_NOW"
+note "tailnet      $(tailscale status --json 2>/dev/null | jq -r '.BackendState // "?"'), IPv4 $TS_IP"
+note "printer      $([[ -e /dev/bondrucker ]] && echo "/dev/bondrucker -> $(readlink -f /dev/bondrucker)" || echo 'not plugged in (/dev/bondrucker appears with the printer)')"
 note "bridge       $(systemctl is-active printer-bridge.service 2>/dev/null || true) (port 9100, tailnet only)"
 note "test print   printf 'Testbon\\n\\n\\n\\x1dV\\x01' | nc -w 3 $TS_IP 9100"
 if [[ $REBOOT_NEEDED == 1 ]]; then
