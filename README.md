@@ -30,7 +30,7 @@ docker compose logs -f
 docker compose exec order-printer su-exec app php bin/console printer:test
 ```
 
-The image runs both workers under supervisor, checks the printer connection as its health check and keeps the queue and receipt copies on the `/app/data` volume. Build, environment variables, USB devices and the Dokploy setup are described in [docs/docker.md](docs/docker.md). The private network between the Dokploy host and the printer Pis is described in [docs/tailscale.md](docs/tailscale.md), and the Pi that exposes the USB printer on that network in [docs/pi-gateway.md](docs/pi-gateway.md).
+The image runs both workers under supervisor, checks the printer connection as its health check and keeps the queue and receipt copies on the `/app/data` volume. Build, environment variables and USB devices are described in [docs/docker.md](docs/docker.md), the per-restaurant setup on Dokploy in [docs/dokploy-deployment.md](docs/dokploy-deployment.md). The private network between the Dokploy host and the printer Pis is described in [docs/tailscale.md](docs/tailscale.md), and the Pi that exposes the USB printer on that network in [docs/pi-gateway.md](docs/pi-gateway.md).
 
 ### On a host (Raspberry Pi, bare server)
 
@@ -66,6 +66,7 @@ All configuration is done through environment variables (`.env.local` on a host,
 | `PRINTER_DSN`            | yes      | How to reach the printer, see below                                                                                          |
 | `APP_SECRET`             | prod     | Any random string                                                                                                            |
 | `DATA_DIR`               | no       | Where receipt copies are stored, relative to the project root. Default `/data/receipts/`                                     |
+| `RECEIPT_RETENTION_DAYS` | no       | Receipt copies contain names and addresses; they are deleted daily at 04:00 after this many days. Default `30`, `0` keeps them |
 | `SHOP_NAME`              | no       | Restaurant name on `printer:test` receipts. Defaults to the domain of `SHOPWARE_HOST`                                        |
 
 ### Printer DSN
@@ -74,7 +75,7 @@ All configuration is done through environment variables (`.env.local` on a host,
 | -------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `file:///dev/usb/lp0`      | USB or serial printer on this machine. The user running the service needs write access (`usermod -aG lp …`). Any writable path works, e.g. `file:///dev/null` in development |
 | `tcp://192.168.1.50:9100`  | Network printer, or a Raspberry Pi acting as printer gateway, speaking raw ESC/POS. The port defaults to 9100; connecting times out after 5 seconds |
-| `dummy://`                 | No printer. Receipts are only archived in `DATA_DIR`                                                         |
+| `dummy://`                 | No printer, dry run. Receipts are only archived in `DATA_DIR` and orders stay *open* in Shopware, so a `dummy://` instance can run against a live shop without swallowing orders |
 
 ## Commands
 

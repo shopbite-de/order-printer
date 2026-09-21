@@ -63,8 +63,10 @@ Service wiring is explicit in `config/services.yaml` and `config/services/*.yaml
 ### Message flow
 
 ```
-OpenOrderProvider (#[AsSchedule], every 10s, handled inside the scheduler_default worker)
-  └─ PrintOpenOrdersCommand(markInProgress: true)          → no transport: handled synchronously
+OpenOrderProvider (#[AsSchedule], handled inside the scheduler_default worker)
+  ├─ PurgeReceiptsCommand(retentionDays), daily 04:00 Europe/Berlin → no transport: PurgeReceiptsHandler deletes
+  │    receipt copies older than RECEIPT_RETENTION_DAYS (0 = never scheduled) via ReceiptArchiveInterface
+  └─ PrintOpenOrdersCommand(markInProgress: true), every 10 s → no transport: handled synchronously
        └─ PrintOpenOrdersHandler: OrderRepository::findNewNumbers()
             └─ PrintOrderCommand(orderNumber, markInProgress) + DeduplicateStamp("print-order-<n>") → transport "async"
                  ├─ DeduplicateMiddleware: lock already held (queued/retrying) → message silently dropped
@@ -98,7 +100,7 @@ The printer connector comes from `Infra\EscPos\PrintConnectorFactory::create(PRI
 
 Anything else throws `InvalidArgumentException`. DSN parsing lives in `PrinterDsn::parse()` (`PrinterScheme` enum), shared with `PrinterChecker` (reachability without printing: TCP connect with 3 s timeout, `file_exists` + `is_writable` for files, `php://` wrappers skipped) and `TestReceiptPrinter` (the `printer:test` receipt: `SHOP_NAME` or the `SHOPWARE_HOST` domain, time in Europe/Berlin, `gethostname()`, DSN). The commands in `Adapter/Command/` map exceptions to exit code 1 with the message. There is deliberately no CUPS/`lp` path: the production container has no CUPS. `PrintProcessor` takes the factory as an optional last constructor argument, so tests build it with a `dummy://` or `file://php://memory` DSN and no mocks.
 
-`PrintProcessor` calls `OrderRepository::markInProgress()` only when `markInProgress` is true **and** `Order::$isNew` (Shopware state `open`), so reprinting an in-progress order never touches state.
+`PrintProcessor` calls `OrderRepository::markInProgress()` only when `markInProgress` is true **and** `Order::$isNew` (Shopware state `open`) **and** the DSN is not `dummy://`, so reprinting an in-progress order never touches state, and a `dummy://` instance is a dry run: receipts are archived, orders stay `open` and are re-queued by every poll (safe against a live shop, see `docs/dokploy-deployment.md`).
 
 ### Line-item print type
 
@@ -114,7 +116,7 @@ Auth is OAuth client credentials. `config/services/shopware.yaml` defines a seco
 
 ## Environment
 
-Copy `.env` to `.env.local`. Required: `SHOPWARE_HOST`, `SHOPWARE_CLIENT_ID`, `SHOPWARE_CLIENT_SECRET`, `PRINTER_DSN` (see the table above; `.env` defaults to `file:///dev/null`), `DATA_DIR` (relative to project dir, default `/data/receipts/`). Optional: `SHOP_NAME` for test receipts (read with `env(default::SHOP_NAME)`, so it may be absent). `DATABASE_URL` points at SQLite and backs the Messenger queue (`messenger_messages`) and the deduplication locks (`lock_keys`); both tables are created on first use. There are no Doctrine entities.
+Copy `.env` to `.env.local`. Required: `SHOPWARE_HOST`, `SHOPWARE_CLIENT_ID`, `SHOPWARE_CLIENT_SECRET`, `PRINTER_DSN` (see the table above; `.env` defaults to `file:///dev/null`), `DATA_DIR` (relative to project dir, default `/data/receipts/`), `RECEIPT_RETENTION_DAYS` (default 30). Optional: `SHOP_NAME` for test receipts (read with `env(default::SHOP_NAME)`, so it may be absent). `DATABASE_URL` points at SQLite and backs the Messenger queue (`messenger_messages`) and the deduplication locks (`lock_keys`); both tables are created on first use. There are no Doctrine entities.
 
 ## Conventions
 

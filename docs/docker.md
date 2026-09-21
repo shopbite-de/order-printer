@@ -53,10 +53,11 @@ docker compose exec order-printer su-exec app php bin/console printer:test
 | `SHOPWARE_HOST`          | yes      | Shop URL, e.g. `https://shopware.shopbite.de`                                                                  |
 | `SHOPWARE_CLIENT_ID`     | yes      | Admin API integration client id                                                                                |
 | `SHOPWARE_CLIENT_SECRET` | yes      | Admin API integration client secret                                                                            |
-| `PRINTER_DSN`            | yes      | `tcp://<host>:9100` (network printer / Pi gateway), `file:///dev/usb/lp0` (USB device), `dummy://` (no printer) |
+| `PRINTER_DSN`            | yes      | `tcp://<host>:9100` (network printer / Pi gateway), `file:///dev/usb/lp0` (USB device), `dummy://` (dry run: no printer, orders stay open) |
 | `APP_SECRET`             | yes      | Any random string (Symfony kernel secret)                                                                      |
 | `SHOP_NAME`              | no       | Restaurant name on `printer:test` receipts, defaults to the `SHOPWARE_HOST` domain                            |
 | `DATA_DIR`               | no       | Receipt copies, relative to `/app`; default `/data/receipts/`                                                  |
+| `RECEIPT_RETENTION_DAYS` | no       | Delete receipt copies (personal data) after this many days, daily at 04:00 Europe/Berlin; default `30`, `0` keeps them |
 
 The image ships the repository's `.env` as defaults; `.env.local` is never copied. Real
 environment variables always win.
@@ -110,6 +111,9 @@ device file) without printing. The container is `healthy` when the printer answe
 `unhealthy` after three failures, which Dokploy shows and can alert on.
 
 ## Dokploy
+
+One compose service per restaurant; the full procedure and the checklist for a new restaurant
+are in [dokploy-deployment.md](dokploy-deployment.md). In short:
 
 1. Create a **Compose** service from this repository (branch `main`, compose file `compose.yaml`).
    Dokploy builds the image itself; no registry is needed.
