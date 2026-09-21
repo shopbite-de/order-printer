@@ -102,8 +102,13 @@ On `panel.shopbite.de`:
 
 ```bash
 curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up --ssh --advertise-tags=tag:server --hostname=dokploy
+sudo tailscale up --ssh --accept-dns=false --advertise-tags=tag:server --hostname=dokploy
 ```
+
+`--accept-dns=false` keeps MagicDNS off the host: Tailscale would otherwise put its resolver
+into the host's DNS configuration, which containers inherit, and the printers are addressed by
+IP anyway. `--ssh` makes `tailscaled` answer port 22 on `tailscale0` only; the regular `sshd`
+on the public interface is untouched.
 
 `tailscale up` prints a login URL; open it as an admin. Because the host advertises a tag owned
 by the admins, the device ends up tagged instead of being tied to the admin's user account.
@@ -112,8 +117,10 @@ take every restaurant offline at once. Verify with `tailscale status`: the host 
 `tag:server` and no user.
 
 Tailscale does not touch Docker's networking, and Dokploy's Traefik keeps serving on the
-public interface; the tailnet only adds the `tailscale0` interface with a `100.64.0.0/10`
-address.
+public interface: the tailnet adds the `tailscale0` interface with a `100.64.0.0/10` address,
+routes for that range only, and its own `ts-*` iptables chains that match tailnet traffic
+only. No inbound port is opened on the public interface. `tailscale down` and removing the
+package undo all of it.
 
 ## Verifying that containers reach the tailnet
 
