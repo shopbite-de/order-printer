@@ -19,18 +19,19 @@ restaurant in [pi-gateway.md](pi-gateway.md).
 ## Shopware integration per shop
 
 The instance authenticates with an Admin API *Integration* (Settings › System › Integrations).
-Create one per shop, with a role that has only what the printer uses:
+Create one per shop with the role `order-printer`. The ShopBite Shopware plugin creates that role
+on install (and keeps it up to date on plugin updates) with only what the printer uses:
 
-| What                          | Why                                                |
-| ----------------------------- | -------------------------------------------------- |
-| Orders: view                  | `POST /api/search/order`, `/api/search/order-delivery` (line items, state, delivery address) |
-| Orders: edit                  | `POST /api/_action/order/{id}/state/process` (mark *in progress*) |
+| Privilege                                                                            | Why                                                                |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| `order:read`, `state_machine_state:read`                                             | `POST /api/search/order` (open orders)                             |
+| `order_delivery:read`, `order_line_item:read`, `order_address:read`, `shipping_method:read` | `POST /api/search/order-delivery` (line items, state, delivery address, shipping method) |
+| `order:update`                                                                       | `POST /api/_action/order/{id}/state/process` (mark *in progress*)  |
 
-Nothing else: no products, customers, media or settings. Create the role first (Settings ›
-System › Users & permissions › Roles, e.g. `order-printer`), then the integration with that
-role, and copy the access key id and secret straight into Dokploy; the secret is shown once.
-The ShopBite plugin will ship this role with the exact privilege list
-(shopbite-de/shopware-plugin#21); until then it is created by hand.
+Nothing else: no products, customers, media or settings; any other Admin API call gets a 403.
+In Settings › System › Integrations add an integration, pick the role `order-printer`, and copy
+the access key id and secret straight into Dokploy; the secret is shown once. Do not edit the
+role by hand: the plugin resets its privileges on the next update.
 
 ## Environment per instance
 
@@ -110,7 +111,7 @@ night at 04:00 Europe/Berlin. Set it to `0` only for debugging, and clean up by 
 
 ## Checklist: new restaurant
 
-- [ ] Shopware: role `order-printer` (orders view + edit), integration for this shop, key id and secret in the password manager
+- [ ] Shopware: ShopBite plugin installed (ships the role `order-printer`), integration with that role for this shop, key id and secret in the password manager
 - [ ] Pi gateway for the shop provisioned (`printer-<shop>` in the tailnet, see [pi-gateway.md](pi-gateway.md)) and its tailnet IP noted
 - [ ] Dokploy: compose service `order-printer-<shop>` in project `order-printer`, branch `main`, auto deploy on
 - [ ] Environment set: `APP_SECRET`, `SHOPWARE_*`, `SHOP_NAME`, `PRINTER_DSN=dummy://`
