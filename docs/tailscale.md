@@ -13,8 +13,13 @@ admin laptop (group:admins) ──tcp/22 (Tailscale SSH), tcp/9100──▶ Pi
 ## Plan and login
 
 Tailscale's Free plan is for personal use only, so the tailnet runs on the **Standard** plan.
-Sign up with a business identity on the `shopbite.de` domain, not a personal account; the
-tailnet then belongs to the organisation and other admins can be added under the same domain.
+
+Neither `shopbite.de` nor `veliu.net` has an identity provider Tailscale can log in with
+(Google Workspace, Microsoft Entra, Okta, or OIDC), so the tailnet was created with the GitHub
+login. Tailscale names GitHub users `<github-user>@github`; that is the form used in
+`group:admins`. Further admins are invited from the admin console (**Users → Invite**) and
+then added to the group by their `@github` name. Should the company get a domain-backed
+identity provider later, the tailnet can be migrated to it from **Settings → Identity**.
 
 Billing is per user: every person who logs in counts, the Pis and the Dokploy host do not,
 because they are joined as tagged devices and tagged devices are not users.
@@ -194,8 +199,8 @@ the password manager.
 
 ## Adding an admin
 
-Invite the person in the admin console with the **Admin** role and add their login to
-`group:admins` in the policy. Only then can they SSH to the Pis and create tagged auth keys;
+Invite the person in the admin console with the **Admin** role and add their login
+(`<github-user>@github`) to `group:admins` in the policy. Only then can they SSH to the Pis and create tagged auth keys;
 removing them from the group (or from the tailnet) revokes that everywhere at once.
 
 The policy uses an explicit group instead of `autogroup:admin` because Tailscale's policy
