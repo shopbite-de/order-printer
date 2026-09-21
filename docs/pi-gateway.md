@@ -9,7 +9,9 @@ order-printer container ──tailnet, tcp/9100──▶ Pi: socat ──▶ /de
 ```
 
 Everything on the Pi is set up by `dev-ops/pi-gateway/install.sh`, which is idempotent and
-safe to re-run.
+safe to re-run. It installs what is the same on every Pi; the customer identity (hostname,
+tailnet login) is applied by `printer-gateway-provision`, either immediately or, on a flashed
+image, at first boot from a file on the boot partition.
 
 ## Hardware
 
@@ -36,30 +38,51 @@ From your laptop, with the Pi reachable in the LAN (its address is shown by your
 try `ssh pi@raspberrypi.local`):
 
 ```bash
-scp dev-ops/pi-gateway/install.sh pi@<pi-lan-ip>:
+scp -r dev-ops/pi-gateway pi@<pi-lan-ip>:
 ssh pi@<pi-lan-ip>
-sudo TS_AUTHKEY=tskey-auth-... CUSTOMER=<shop> ./install.sh
+sudo TS_AUTHKEY=tskey-auth-... CUSTOMER=<shop> bash pi-gateway/install.sh
 ```
 
 `CUSTOMER` is the shop slug (`masala-mio`), the Pi becomes `printer-<shop>` in the tailnet.
 `TS_AUTHKEY` is the reusable `tag:printer` key from the password manager (see
 [tailscale.md](tailscale.md#auth-key-for-the-pi-image)); it is only needed on the first run.
+Both may be left out: the Pi is then provisioned at first boot from a file, see below.
 
 What the script does, in order:
 
-| Step        | Result                                                                                                  |
-| ----------- | ------------------------------------------------------------------------------------------------------- |
-| Packages    | `socat`, `nftables`, `unattended-upgrades`, `curl`, `jq`                                                 |
-| Hostname    | `printer-<shop>`                                                                                        |
-| Tailscale   | installed, `tailscale up --ssh --accept-dns=false --advertise-tags=tag:printer`, auto-update on         |
-| Printer     | detects the USB printer (class 07), writes a udev rule that links it to `/dev/bondrucker`               |
-| Bridge      | `printer-bridge.service`: `socat TCP-LISTEN:9100 … OPEN:/dev/bondrucker`, bound to the device unit      |
-| Firewall    | nftables: inbound only on `tailscale0` (plus DHCP, ICMP and Tailscale's UDP 41641); SSH via Tailscale   |
-| Updates     | `unattended-upgrades` with automatic reboot at 04:30 when a kernel update needs it                      |
-| Watchdog    | `dtparam=watchdog=on` and systemd `RuntimeWatchdogSec=15`: a hung Pi reboots itself                     |
+| Step         | Result                                                                                                  |
+| ------------ | ------------------------------------------------------------------------------------------------------- |
+| Packages     | `socat`, `nftables`, `unattended-upgrades`, `curl`, `jq`                                                 |
+| Tailscale    | installed and running, not yet logged in                                                                |
+| Printer      | udev rule: every `usblp` printer becomes `/dev/bondrucker` (there is one printer per Pi)                |
+| Bridge       | `printer-bridge.service`: `socat TCP-LISTEN:9100 … OPEN:/dev/bondrucker`, bound to the device unit      |
+| Provisioning | `printer-gateway-provision` + service: hostname `printer-<shop>`, `tailscale up --ssh --accept-dns=false --advertise-tags=tag:printer`, auto-update on. Runs now with `CUSTOMER`/`TS_AUTHKEY`, otherwise at boot from `printer-gateway.env` |
+| Firewall     | nftables: inbound only on `tailscale0` (plus DHCP, ICMP and Tailscale's UDP 41641); SSH via Tailscale   |
+| Updates      | `unattended-upgrades` with automatic reboot at 04:30 when a kernel update needs it                      |
+| Watchdog     | `dtparam=watchdog=on` and systemd `RuntimeWatchdogSec=15`: a hung Pi reboots itself                     |
 
 The script ends with a summary and, on the first run, asks for a reboot to activate the
 hardware watchdog. Reboot, then test.
+
+### Provisioning from the boot partition
+
+A Pi that was set up without `CUSTOMER` (or an SD card flashed from such an image) gets its
+identity from `printer-gateway.env` on the boot partition, the FAT partition that Windows and
+macOS mount as `bootfs` when the card is plugged into a laptop. Copy
+`dev-ops/pi-gateway/printer-gateway.env.example` there as `printer-gateway.env` and fill in:
+
+```
+CUSTOMER=masala-mio
+TS_AUTHKEY=tskey-auth-...
+#WIFI_SSID=
+#WIFI_PASSWORD=
+```
+
+On boot `printer-gateway-provision.service` connects the WLAN if given, sets the hostname,
+joins the tailnet and **deletes the file**, so the auth key does not stay on the card. Without
+network the attempt is repeated every 30 s until it succeeds; `journalctl -u
+printer-gateway-provision` shows the progress. The Pi then appears as `printer-<shop>` in the
+tailnet, nothing else is needed. This is the basis for a pre-built image (#47).
 
 Nothing from a legacy order-printer installation on the same Pi (PHP, supervisor, the
 repository clone) is touched; that is removed during the cutover.
@@ -107,17 +130,15 @@ every file and reports what it changed, useful after editing the script.
 
 ## Troubleshooting
 
-**Printer not detected** (`no USB printer found`). `lsusb` must list it; if it does but the
-script does not find it, the printer does not announce USB class 07 (some cheap models use a
-vendor-specific class). Pass its ids explicitly: `PRINTER_VENDOR=04b8 PRINTER_PRODUCT=0202`.
-If `/dev/usb/lp*` never appears (`dmesg | grep -i usblp`), the `usblp` driver does not bind to
-it and `socat` cannot open it; such a printer needs a different path (libusb) that this setup
-does not provide.
+**Printer not detected.** `lsusb` must list it. If `/dev/usb/lp*` never appears (`dmesg |
+grep -i usblp`), the printer does not announce USB class 07 (some cheap models use a
+vendor-specific class), the `usblp` driver does not bind to it and `socat` cannot open it; such
+a printer needs a different path (libusb) that this setup does not provide.
 
-**`/dev/bondrucker` missing although the printer is on.** `udevadm info -a -n /dev/usb/lp0 |
-grep -E 'idVendor|idProduct'` shows the ids the kernel sees; they must match the udev rule in
-`/etc/udev/rules.d/99-bondrucker.rules`. After editing: `sudo udevadm control --reload &&
-sudo udevadm trigger --subsystem-match=usbmisc --action=add`.
+**`/dev/bondrucker` missing although the printer is on.** `ls /dev/usb/` must show an `lp*`
+device; if not, see above (`usblp` did not bind). If it does: `sudo udevadm control --reload
+&& sudo udevadm trigger --subsystem-match=usbmisc --action=add`, then `udevadm info -n
+/dev/usb/lp0 | grep bondrucker`.
 
 **Bridge not active.** `systemctl status printer-bridge` says why. `inactive` with the device
 present: `sudo udevadm trigger --subsystem-match=usbmisc --action=add`. `failed` with
@@ -128,9 +149,10 @@ present: `sudo udevadm trigger --subsystem-match=usbmisc --action=add`. `failed`
 this only concerns the manual test.
 
 **Tailscale offline.** `tailscale status` on the Pi (via a keyboard, or LAN SSH if
-`ALLOW_LAN_SSH=1` was used). `Logged out`: the auth key expired before this Pi was set up,
-generate a new one and re-run the script with `TS_AUTHKEY`. `NeedsLogin` after a long power
-loss: same. Otherwise check that the restaurant network allows outbound UDP 41641 and HTTPS;
+`ALLOW_LAN_SSH=1` was used). `Logged out` or `NeedsLogin`: the auth key expired before this
+Pi was provisioned, generate a new one and either re-run the script with `TS_AUTHKEY` and
+`CUSTOMER`, or put a fresh `printer-gateway.env` on the boot partition and reboot. The
+provisioning log is `journalctl -u printer-gateway-provision`. Otherwise check that the restaurant network allows outbound UDP 41641 and HTTPS;
 Tailscale falls back to relays over 443, so a working WLAN is normally enough.
 
 **Locked out.** The firewall accepts SSH only from the tailnet. With the Pi in the tailnet,
