@@ -1,7 +1,11 @@
 {
+  "groups": {
+    "group:admins": ["lirim@veliu.net"]
+  },
+
   "tagOwners": {
-    "tag:server": ["autogroup:admin"],
-    "tag:printer": ["autogroup:admin"]
+    "tag:server": ["group:admins"],
+    "tag:printer": ["group:admins"]
   },
 
   "grants": [
@@ -11,12 +15,12 @@
       "ip": ["tcp:9100"]
     },
     {
-      "src": ["autogroup:admin"],
+      "src": ["group:admins"],
       "dst": ["tag:printer"],
       "ip": ["tcp:22", "tcp:9100"]
     },
     {
-      "src": ["autogroup:admin"],
+      "src": ["group:admins"],
       "dst": ["tag:server"],
       "ip": ["tcp:22"]
     }
@@ -26,7 +30,7 @@
     {
       "action": "check",
       "checkPeriod": "12h",
-      "src": ["autogroup:admin"],
+      "src": ["group:admins"],
       "dst": ["tag:printer", "tag:server"],
       "users": ["autogroup:nonroot", "root"]
     }
@@ -43,7 +47,7 @@
       "deny": ["tag:server:22", "tag:server:9100", "tag:printer:9100", "tag:printer:22"]
     },
     {
-      "src": "autogroup:admin",
+      "src": "group:admins",
       "accept": ["tag:printer:22", "tag:printer:9100", "tag:server:22"]
     }
   ],
