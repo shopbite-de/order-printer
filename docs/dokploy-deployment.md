@@ -29,6 +29,8 @@ Create one per shop, with a role that has only what the printer uses:
 Nothing else: no products, customers, media or settings. Create the role first (Settings ›
 System › Users & permissions › Roles, e.g. `order-printer`), then the integration with that
 role, and copy the access key id and secret straight into Dokploy; the secret is shown once.
+The ShopBite plugin will ship this role with the exact privilege list
+(shopbite-de/shopware-plugin#21); until then it is created by hand.
 
 ## Environment per instance
 
