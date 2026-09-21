@@ -30,7 +30,7 @@ docker compose logs -f
 docker compose exec order-printer su-exec app php bin/console printer:test
 ```
 
-The image runs both workers under supervisor, checks the printer connection as its health check and keeps the queue and receipt copies on the `/app/data` volume. Build, environment variables, USB devices and the Dokploy setup are described in [docs/docker.md](docs/docker.md). The private network between the Dokploy host and the printer Pis is described in [docs/tailscale.md](docs/tailscale.md).
+The image runs both workers under supervisor, checks the printer connection as its health check and keeps the queue and receipt copies on the `/app/data` volume. Build, environment variables, USB devices and the Dokploy setup are described in [docs/docker.md](docs/docker.md). The private network between the Dokploy host and the printer Pis is described in [docs/tailscale.md](docs/tailscale.md), and the Pi that exposes the USB printer on that network in [docs/pi-gateway.md](docs/pi-gateway.md).
 
 ### On a host (Raspberry Pi, bare server)
 
