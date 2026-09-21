@@ -68,9 +68,17 @@ final readonly class PrintProcessor implements PrintOrderProcessorInterface
             $printer->close();
         }
 
-        if ($markInProgress && $order->isNew) {
+        // dummy:// prints nothing, so it must not claim the order was printed: the order stays
+        // "open" and is picked up again by every poll. This makes a dummy:// instance a safe
+        // dry run against a live shop (receipt copies are still archived).
+        if ($markInProgress && $order->isNew && !$this->isDryRun()) {
             $this->orderRepository->markInProgress($order);
         }
+    }
+
+    private function isDryRun(): bool
+    {
+        return PrinterScheme::Dummy === PrinterDsn::parse($this->printerDsn)->scheme;
     }
 
     private function setHeader(Printer $printer, Order $order): Printer
