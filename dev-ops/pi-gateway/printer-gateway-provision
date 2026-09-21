@@ -25,12 +25,24 @@ if [[ -z ${CUSTOMER:-} || -z ${TS_AUTHKEY:-} ]]; then
         exit 0
     fi
     log "reading $ENV_FILE"
-    # The file may have been edited on Windows or macOS: drop CRs and a BOM.
-    set -a
-    # shellcheck disable=SC1090
-    source <(sed 's/\r$//; 1s/^\xEF\xBB\xBF//' "$ENV_FILE")
-    set +a
+    # Parsed line by line instead of sourced: the file is edited by hand, often on Windows or
+    # macOS (CRLF, BOM), and must never be executed as shell. KEY=value, optional quotes.
+    while IFS= read -r line || [[ -n $line ]]; do
+        line=${line%$'\r'}
+        line=${line#$'\xEF\xBB\xBF'}
+        [[ $line =~ ^[[:space:]]*([A-Z_]+)[[:space:]]*=[[:space:]]*(.*)$ ]] || continue
+        key=${BASH_REMATCH[1]}
+        value=${BASH_REMATCH[2]}
+        value=${value%"${value##*[![:space:]]}"}
+        [[ $value =~ ^\"(.*)\"$ || $value =~ ^\'(.*)\'$ ]] && value=${BASH_REMATCH[1]}
+        case $key in
+            CUSTOMER|TS_AUTHKEY|WIFI_SSID|WIFI_PASSWORD) printf -v "$key" '%s' "$value" ;;
+            *) log "ignoring unknown key $key" ;;
+        esac
+    done <"$ENV_FILE"
 fi
+
+[[ ${TS_AUTHKEY:-} == tskey-auth-* ]] || { log "TS_AUTHKEY in $ENV_FILE is not a Tailscale auth key (must start with tskey-auth-)"; exit 1; }
 
 : "${CUSTOMER:?CUSTOMER missing}"
 : "${TS_AUTHKEY:?TS_AUTHKEY missing}"

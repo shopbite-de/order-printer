@@ -79,9 +79,11 @@ TS_AUTHKEY=tskey-auth-...
 ```
 
 On boot `printer-gateway-provision.service` connects the WLAN if given, sets the hostname,
-joins the tailnet and **deletes the file**, so the auth key does not stay on the card. Without
-network the attempt is repeated every 30 s until it succeeds; `journalctl -u
-printer-gateway-provision` shows the progress. The Pi then appears as `printer-<shop>` in the
+joins the tailnet and **deletes the file**, so the auth key does not stay on the card. The file
+is parsed line by line (Windows line endings and quotes are fine, it is never executed as
+shell). Without network, or with a key that does not start with `tskey-auth-`, the attempt is
+repeated every 30 s and the file stays on the card for correction; `journalctl -u
+printer-gateway-provision` shows why. The Pi then appears as `printer-<shop>` in the
 tailnet, nothing else is needed. This is the basis for a pre-built image (#47).
 
 Nothing from a legacy order-printer installation on the same Pi (PHP, supervisor, the
@@ -127,6 +129,14 @@ sudo nft list ruleset                         # firewall
 
 Re-running `install.sh` (without `TS_AUTHKEY`, the Pi is already in the tailnet) re-applies
 every file and reports what it changed, useful after editing the script.
+
+To move a Pi to another shop, or to re-test provisioning, put a new `printer-gateway.env` on
+the boot partition, then leave the tailnet and reboot **in one command**, because the
+Tailscale SSH session dies with the logout:
+
+```bash
+sudo sh -c 'tailscale logout; reboot'
+```
 
 ## Troubleshooting
 
