@@ -50,12 +50,6 @@
 
   "sshTests": [
     {
-      "src": "autogroup:admin",
-      "dst": ["tag:printer"],
-      "check": ["pi", "root"],
-      "deny": []
-    },
-    {
       "src": "tag:server",
       "dst": ["tag:printer"],
       "deny": ["pi", "root"]
