@@ -98,7 +98,7 @@ Never commit the key. The setup script reads it from `TS_AUTHKEY`.
 
 ## Joining the Dokploy host
 
-On `panel.shopbite.de`:
+On the Dokploy host (`panel.veliu.net`):
 
 ```bash
 curl -fsSL https://tailscale.com/install.sh | sh
