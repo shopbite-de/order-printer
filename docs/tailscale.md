@@ -147,6 +147,10 @@ docker run --rm --network ts-test alpine nc -zv -w 3 $PI 9100
 docker network rm ts-test
 ```
 
+Verified on 2026-09-21 on `panel.veliu.net` (Docker's default bridge, plain `alpine`
+container): port 9100 on the Pi `open`, port 22 `Operation timed out`. The host routes
+container traffic into the tailnet without a sidecar.
+
 If 1 works but 2 or 3 does not, the usual causes are:
 
 - `ip_forward` off: `sysctl net.ipv4.ip_forward` must be `1` (Docker sets it on start).
