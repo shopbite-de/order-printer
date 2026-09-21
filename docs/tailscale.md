@@ -7,7 +7,7 @@ that tailnet is set up; the policy it uses is [tailscale-acl.json](tailscale-acl
 
 ```
 Dokploy host (tag:server) ──tcp/9100──▶ Pi (tag:printer) ──USB──▶ receipt printer
-admin laptop (autogroup:admin) ──tcp/22 (Tailscale SSH), tcp/9100──▶ Pi
+admin laptop (group:admins) ──tcp/22 (Tailscale SSH), tcp/9100──▶ Pi
 ```
 
 ## Plan and login
@@ -23,8 +23,8 @@ because they are joined as tagged devices and tagged devices are not users.
 
 | Tag           | Devices                          | Owner            |
 | ------------- | -------------------------------- | ---------------- |
-| `tag:server`  | the Dokploy host                 | `autogroup:admin` |
-| `tag:printer` | every Pi gateway (one per shop)  | `autogroup:admin` |
+| `tag:server`  | the Dokploy host                 | `group:admins` |
+| `tag:printer` | every Pi gateway (one per shop)  | `group:admins` |
 
 A tagged device has no user identity, so the ACL is the only thing that decides what it may
 reach. Both tags are owned by the admins, which also means only admins can create auth keys
@@ -194,6 +194,9 @@ the password manager.
 
 ## Adding an admin
 
-Invite the person in the admin console with the **Admin** role, under the same login domain.
-They immediately fall under `autogroup:admin` in the policy and can SSH to every Pi; removing
-them from the tailnet revokes that everywhere at once.
+Invite the person in the admin console with the **Admin** role and add their login to
+`group:admins` in the policy. Only then can they SSH to the Pis and create tagged auth keys;
+removing them from the group (or from the tailnet) revokes that everywhere at once.
+
+The policy uses an explicit group instead of `autogroup:admin` because Tailscale's policy
+tests cannot evaluate the autogroup, and a policy without working tests cannot be saved.
