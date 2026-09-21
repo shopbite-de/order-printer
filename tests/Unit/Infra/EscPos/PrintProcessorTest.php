@@ -15,7 +15,7 @@ use Veliu\OrderPrinter\Infra\EscPos\PrintProcessor;
 
 class PrintProcessorTest extends TestCase
 {
-    private const string PRINTER_DSN = 'dummy://';
+    private const string PRINTER_DSN = 'file://php://memory';
     private const string DATA_DIR = '/tmp/test_data/';
     private const string PROJECT_DIR = '/tmp/test_project';
 
@@ -89,6 +89,18 @@ class PrintProcessorTest extends TestCase
         // Assert that file was still created
         $expectedFile = self::PROJECT_DIR.self::DATA_DIR.'ORDER123_2024-01-01_12-00-00.txt';
         $this->assertFileExists($expectedFile);
+    }
+
+    public function testDummyDsnNeverMarksOrderInProgress(): void
+    {
+        $order = $this->createTestOrder(isNew: true);
+        $this->orderRepository->expects($this->never())->method('markInProgress');
+
+        $dryRun = new PrintProcessor('dummy://', self::DATA_DIR, self::PROJECT_DIR, $this->orderRepository);
+        $dryRun->__invoke($order, true);
+
+        // The receipt copy is still archived.
+        $this->assertFileExists(self::PROJECT_DIR.self::DATA_DIR.'ORDER123_2024-01-01_12-00-00.txt');
     }
 
     public function testInvokeDoesNotMarkOrderInProgressWhenOrderIsNotNew(): void

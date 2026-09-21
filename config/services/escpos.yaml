@@ -9,3 +9,6 @@ services:
 
     Veliu\OrderPrinter\Infra\EscPos\PrintProcessor: ~
     Veliu\OrderPrinter\Domain\Service\PrintOrderProcessorInterface: '@Veliu\OrderPrinter\Infra\EscPos\PrintProcessor'
+
+    Veliu\OrderPrinter\Infra\EscPos\ReceiptArchive: ~
+    Veliu\OrderPrinter\Domain\Receipt\ReceiptArchiveInterface: '@Veliu\OrderPrinter\Infra\EscPos\ReceiptArchive'

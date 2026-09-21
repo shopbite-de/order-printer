@@ -17,6 +17,7 @@ services:
     # MESSAGE HANDLER
     Veliu\OrderPrinter\Domain\Command\PrintOrderHandler: ~
     Veliu\OrderPrinter\Domain\Command\PrintOpenOrdersHandler: ~
+    Veliu\OrderPrinter\Domain\Command\PurgeReceiptsHandler: ~
 
     # Logs retried / permanently failed print jobs with their order number
     Veliu\OrderPrinter\Infra\Symfony\Messenger\PrintOrderFailedListener: ~
