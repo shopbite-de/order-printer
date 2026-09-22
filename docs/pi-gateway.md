@@ -106,11 +106,18 @@ From any admin device in the tailnet (the ACL allows admins and the Dokploy host
 
 ```bash
 PI=$(tailscale ip -4 printer-<shop>)
-printf 'Testbon\n\n\n\x1dV\x01' | nc -w 3 $PI 9100
+printf 'Testbon\n\x1dV\x42\x00' | nc -w 3 $PI 9100
 ```
 
-`\x1dV\x01` is the ESC/POS partial cut. The receipt should print and cut. From the restaurant
-LAN the same command against the Pi's LAN address must time out (the firewall drops it).
+`\x1dV\x42\x00` is ESC/POS "feed to the cutter, then cut", the same sequence the Order Printer
+uses; a plain `\x1dV\x01` cuts immediately and lands a few lines too early on an Epson TM-T88.
+The receipt should print and cut. From the restaurant LAN the same command against the Pi's
+LAN address must time out (the firewall drops it).
+
+**Inside the restaurant LAN, address the Pi by its tailnet IP** (or the full MagicDNS name
+`printer-<shop>.<tailnet>.ts.net`). The router's DNS also knows the short name `printer-<shop>`
+from DHCP and answers with the LAN address first, which the firewall drops, so `ssh
+lv@printer-<shop>` hangs on site while it works from anywhere else.
 
 Then from the Dokploy host, the check described in [tailscale.md](tailscale.md#verifying-that-containers-reach-the-tailnet),
 and finally `PRINTER_DSN=tcp://<pi-ip>:9100` on the order-printer service with
