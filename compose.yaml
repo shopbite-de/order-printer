@@ -4,7 +4,6 @@
 services:
   order-printer:
     build: .
-    image: shopbite/order-printer:local
     restart: unless-stopped
     environment:
       APP_SECRET: ${APP_SECRET:?set APP_SECRET to a random string}

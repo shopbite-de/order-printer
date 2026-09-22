@@ -59,8 +59,12 @@ docker compose exec order-printer su-exec app php bin/console printer:test
 | `DATA_DIR`               | no       | Receipt copies, relative to `/app`; default `/data/receipts/`                                                  |
 | `RECEIPT_RETENTION_DAYS` | no       | Delete receipt copies (personal data) after this many days, daily at 04:00 Europe/Berlin; default `30`, `0` keeps them |
 
-The image ships the repository's `.env` as defaults; `.env.local` is never copied. Real
-environment variables always win.
+The image ships `docker/app.env` as `/app/.env` (production defaults: `APP_ENV=prod`, the SQLite
+`DATABASE_URL`, the Doctrine Messenger transport, `PRINTER_DSN=dummy://`, `DATA_DIR`,
+`RECEIPT_RETENTION_DAYS`). It deliberately does not copy the repository's `.env`: Dokploy writes
+the service environment to `.env` next to `compose.yaml` before it builds, so copying that file
+would bake the instance's secrets into an image layer and drop the defaults. `.env.local` is never
+copied either. Real environment variables always win.
 
 ### Volumes
 

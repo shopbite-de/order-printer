@@ -44,7 +44,9 @@ COPY bin bin
 COPY config config
 COPY public public
 COPY src src
-COPY .env composer.json composer.lock symfony.lock ./
+COPY composer.json composer.lock symfony.lock ./
+# Not the repository's .env: Dokploy overwrites it with the service environment before the build.
+COPY docker/app.env .env
 COPY docker/supervisord.conf /etc/supervisord.conf
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint
 
