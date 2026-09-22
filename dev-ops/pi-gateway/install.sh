@@ -14,6 +14,10 @@
 #   sudo TS_AUTHKEY=tskey-auth-... CUSTOMER=<shop> ./install.sh   # set up this Pi for <shop>
 #   sudo ./install.sh                                              # bake an image, provision later
 #
+# build-image.sh runs this script inside a chroot of the Raspberry Pi OS image. Without a
+# running systemd only files are installed and units enabled; nothing is started, reloaded or
+# applied to the kernel of the build host (see live()).
+#
 # Variables (all optional):
 #   CUSTOMER         becomes the hostname printer-<shop> (also in the tailnet)
 #   TS_AUTHKEY       reusable, pre-authorized key with tag:printer; needed with CUSTOMER
@@ -24,10 +28,19 @@ set -euo pipefail
 ALLOW_LAN_SSH="${ALLOW_LAN_SSH:-0}"
 REBOOT_NEEDED=0
 SRC_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+SYSTEMD_RUNNING=0
+[[ -d /run/systemd/system ]] && SYSTEMD_RUNNING=1
 
 step() { printf '\n==> %s\n' "$*"; }
 note() { printf '    %s\n' "$*"; }
 die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
+
+# True on a booted Pi, false inside the image-build chroot.
+live() { [[ $SYSTEMD_RUNNING == 1 ]]; }
+# Runs a command only on a booted Pi (reloads, restarts, kernel state).
+run_live() { if live; then "$@"; fi; }
+# Enables units; on a booted Pi they are started as well.
+enable_unit() { if live; then systemctl enable --now "$@"; else systemctl enable "$@"; fi >/dev/null 2>&1 || true; }
 
 # Writes stdin to $1 only when the content differs. Returns 0 when the file changed.
 install_file() {
@@ -58,11 +71,24 @@ note "socat, nftables, unattended-upgrades, curl, jq installed"
 # ---------------------------------------------------------------------------------------------
 step "Tailscale"
 if ! command -v tailscale >/dev/null; then
-    curl -fsSL https://tailscale.com/install.sh | sh >/dev/null
+    if live; then
+        curl -fsSL https://tailscale.com/install.sh | sh >/dev/null
+    else
+        # Tailscale's install.sh starts the daemon, which is impossible in a chroot: same repo by hand.
+        codename=$(. /etc/os-release && echo "$VERSION_CODENAME")
+        curl -fsSL "https://pkgs.tailscale.com/stable/debian/$codename.noarmor.gpg" -o /usr/share/keyrings/tailscale-archive-keyring.gpg
+        curl -fsSL "https://pkgs.tailscale.com/stable/debian/$codename.tailscale-keyring.list" -o /etc/apt/sources.list.d/tailscale.list
+        apt-get update -qq
+        apt-get install -y -qq --no-install-recommends tailscale >/dev/null
+    fi
     note "tailscale installed"
 fi
-systemctl enable --now tailscaled >/dev/null 2>&1 || true
-note "$(tailscale version | head -1), state $(tailscale status --json 2>/dev/null | jq -r '.BackendState // "unknown"')"
+enable_unit tailscaled
+if live; then
+    note "$(tailscale version | head -1), state $(tailscale status --json 2>/dev/null | jq -r '.BackendState // "unknown"')"
+else
+    note "$(tailscale version | head -1), enabled, not started (image build)"
+fi
 
 # ---------------------------------------------------------------------------------------------
 step "USB printer -> /dev/bondrucker"
@@ -73,7 +99,7 @@ if install_file /etc/udev/rules.d/99-bondrucker.rules <<'RULE'
 SUBSYSTEM=="usbmisc", KERNEL=="lp[0-9]*", SYMLINK+="bondrucker", GROUP="lp", MODE="0660", TAG+="systemd", ENV{SYSTEMD_WANTS}="printer-bridge.service"
 RULE
 then
-    udevadm control --reload
+    run_live udevadm control --reload
 fi
 
 # ---------------------------------------------------------------------------------------------
@@ -103,18 +129,22 @@ ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
 UNIT
-systemctl daemon-reload
-if [[ $bridge_changed == 1 ]] && systemctl is-active --quiet printer-bridge.service; then
+run_live systemctl daemon-reload
+if ! live; then
+    note "unit installed; the bridge starts when a printer is plugged in"
+elif [[ $bridge_changed == 1 ]] && systemctl is-active --quiet printer-bridge.service; then
     systemctl restart printer-bridge.service
     note "bridge restarted with the new unit"
 fi
-udevadm trigger --subsystem-match=usbmisc --action=add
-sleep 1
-if [[ -e /dev/bondrucker ]]; then
-    systemctl is-active --quiet printer-bridge.service && note "bridge running, /dev/bondrucker -> $(readlink -f /dev/bondrucker)" \
-        || note "WARNING: /dev/bondrucker exists but printer-bridge.service is not active: journalctl -u printer-bridge"
-else
-    note "printer not present right now; the bridge starts when it is plugged in"
+if live; then
+    udevadm trigger --subsystem-match=usbmisc --action=add
+    sleep 1
+    if [[ -e /dev/bondrucker ]]; then
+        systemctl is-active --quiet printer-bridge.service && note "bridge running, /dev/bondrucker -> $(readlink -f /dev/bondrucker)" \
+            || note "WARNING: /dev/bondrucker exists but printer-bridge.service is not active: journalctl -u printer-bridge"
+    else
+        note "printer not present right now; the bridge starts when it is plugged in"
+    fi
 fi
 
 # ---------------------------------------------------------------------------------------------
@@ -139,7 +169,7 @@ RestartSec=30s
 [Install]
 WantedBy=multi-user.target
 UNIT
-systemctl daemon-reload
+run_live systemctl daemon-reload
 systemctl enable printer-gateway-provision.service >/dev/null 2>&1
 if [[ -n ${CUSTOMER:-} ]]; then
     CUSTOMER="$CUSTOMER" TS_AUTHKEY="${TS_AUTHKEY:?set TS_AUTHKEY together with CUSTOMER}" /usr/local/sbin/printer-gateway-provision
@@ -149,8 +179,8 @@ elif compgen -G "/boot/*/printer-gateway.env" >/dev/null; then
 else
     note "no CUSTOMER given: the Pi is provisioned at first boot from /boot/firmware/printer-gateway.env"
 fi
-HOSTNAME_NOW=$(hostname)
-TS_IP=$(tailscale ip -4 2>/dev/null || echo "-")
+HOSTNAME_NOW=$(live && hostname || echo 'printer-<shop>')
+TS_IP=$(live && tailscale ip -4 2>/dev/null || echo "<tailnet-ip>")
 
 # ---------------------------------------------------------------------------------------------
 step "Firewall (inbound only via tailscale0)"
@@ -184,9 +214,9 @@ ${lan_ssh_rule}
 }
 RULES
 then
-    nft -f /etc/nftables.conf
+    run_live nft -f /etc/nftables.conf
 fi
-systemctl enable --now nftables >/dev/null 2>&1
+enable_unit nftables
 note "active; SSH via 'tailscale ssh <user>@$HOSTNAME_NOW'$([[ $ALLOW_LAN_SSH == 1 ]] && echo ' and from the LAN')"
 
 # ---------------------------------------------------------------------------------------------
@@ -202,7 +232,7 @@ Unattended-Upgrade::Automatic-Reboot-WithUsers "true";
 Unattended-Upgrade::Automatic-Reboot-Time "04:30";
 Unattended-Upgrade::Remove-Unused-Dependencies "true";
 CONF
-systemctl enable --now apt-daily.timer apt-daily-upgrade.timer >/dev/null 2>&1
+enable_unit apt-daily.timer apt-daily-upgrade.timer
 
 # ---------------------------------------------------------------------------------------------
 step "Hardware watchdog"
@@ -226,14 +256,14 @@ RuntimeWatchdogSec=15
 RebootWatchdogSec=2min
 CONF
 then
-    systemctl daemon-reexec
+    run_live systemctl daemon-reexec
 fi
-[[ -e /dev/watchdog ]] || REBOOT_NEEDED=1
+if live && [[ ! -e /dev/watchdog ]]; then REBOOT_NEEDED=1; fi
 
 # ---------------------------------------------------------------------------------------------
 step "Done"
 note "hostname     $HOSTNAME_NOW"
-note "tailnet      $(tailscale status --json 2>/dev/null | jq -r '.BackendState // "?"'), IPv4 $TS_IP"
+note "tailnet      $(live && tailscale status --json 2>/dev/null | jq -r '.BackendState // "?"' || echo 'joins at first boot'), IPv4 $TS_IP"
 note "printer      $([[ -e /dev/bondrucker ]] && echo "/dev/bondrucker -> $(readlink -f /dev/bondrucker)" || echo 'not plugged in (/dev/bondrucker appears with the printer)')"
 note "bridge       $(systemctl is-active printer-bridge.service 2>/dev/null || true) (port 9100, tailnet only)"
 note "test print   printf 'Testbon\\n\\x1dV\\x42\\x00' | nc -w 3 $TS_IP 9100"
