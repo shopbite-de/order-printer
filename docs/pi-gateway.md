@@ -55,7 +55,7 @@ What the script does, in order:
 | Packages     | `socat`, `nftables`, `unattended-upgrades`, `curl`, `jq`                                                 |
 | Tailscale    | installed and running, not yet logged in                                                                |
 | Printer      | udev rule: every `usblp` printer becomes `/dev/bondrucker` (there is one printer per Pi)                |
-| Bridge       | `printer-bridge.service`: `socat TCP-LISTEN:9100 … OPEN:/dev/bondrucker`, bound to the device unit      |
+| Bridge       | `printer-bridge.service`: `socat -u TCP-LISTEN:9100 … OPEN:/dev/bondrucker`, bound to the device unit   |
 | Provisioning | `printer-gateway-provision` + service: hostname `printer-<shop>`, `tailscale up --ssh --accept-dns=false --advertise-tags=tag:printer`, auto-update on. Runs now with `CUSTOMER`/`TS_AUTHKEY`, otherwise at boot from `printer-gateway.env` |
 | Firewall     | nftables: inbound only on `tailscale0` (plus DHCP, ICMP and Tailscale's UDP 41641); SSH via Tailscale   |
 | Updates      | `unattended-upgrades` with automatic reboot at 04:30 when a kernel update needs it                      |

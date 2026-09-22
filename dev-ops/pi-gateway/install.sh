@@ -80,7 +80,8 @@ fi
 step "printer-bridge.service (socat, port 9100)"
 # BindsTo: the service runs only while the printer is plugged in, so port 9100 is open exactly
 # when a print can succeed. The order printer's health check (a TCP connect) then tells the truth.
-install_file /etc/systemd/system/printer-bridge.service <<'UNIT' || true
+bridge_changed=0
+install_file /etc/systemd/system/printer-bridge.service <<'UNIT' && bridge_changed=1
 [Unit]
 Description=Raw TCP port 9100 to the USB receipt printer
 BindsTo=dev-bondrucker.device
@@ -88,7 +89,9 @@ After=dev-bondrucker.device tailscaled.service
 StartLimitIntervalSec=0
 
 [Service]
-ExecStart=/usr/bin/socat TCP-LISTEN:9100,reuseaddr,fork OPEN:/dev/bondrucker,wronly
+# -u: data flows only from the TCP client to the printer; without it socat also tries to read
+# from the write-only device and logs "Bad file descriptor" after every print.
+ExecStart=/usr/bin/socat -u TCP-LISTEN:9100,reuseaddr,fork OPEN:/dev/bondrucker,wronly
 DynamicUser=yes
 SupplementaryGroups=lp
 Restart=always
@@ -99,6 +102,10 @@ ProtectHome=yes
 PrivateTmp=yes
 UNIT
 systemctl daemon-reload
+if [[ $bridge_changed == 1 ]] && systemctl is-active --quiet printer-bridge.service; then
+    systemctl restart printer-bridge.service
+    note "bridge restarted with the new unit"
+fi
 udevadm trigger --subsystem-match=usbmisc --action=add
 sleep 1
 if [[ -e /dev/bondrucker ]]; then
