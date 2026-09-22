@@ -145,6 +145,28 @@ Tailscale SSH session dies with the logout:
 sudo sh -c 'tailscale logout; reboot'
 ```
 
+## Cutover log
+
+**2026-09-22, Pizzeria La Fattoria** (first restaurant). The existing Raspberry Pi 2/3 (armhf,
+Raspbian 12) that ran the Order Printer locally became the gateway while the legacy service kept
+printing; `install.sh` ran next to it without touching it. Printer: Epson TM-T88 (`04b8:0202`)
+as `/dev/usb/lp0`. Order of events: script, `nc` test print over the tailnet, reboot for the
+watchdog (legacy supervisor came back on its own), Dokploy instance verified with `dummy://`
+(`app:print-order --no-mark-in-progress` against a real order), `supervisorctl stop all` and
+`autostart=false` on the Pi, `PRINTER_DSN=tcp://<pi>:9100` on the instance, `printer:test`,
+test order 12993 printed once and moved to *in progress*. Legacy removal is due after three
+clean days.
+
+Learnings that went into the script and this document:
+
+- `socat` must run with `-u`; otherwise every print logs `read(...): Bad file descriptor`.
+- Right after `tailscale up` the first connection to 9100 can time out for a few seconds while
+  Tailscale still negotiates the path; retry before suspecting the firewall.
+- Inside the restaurant LAN the short hostname resolves to the LAN address (router DNS), which
+  the firewall drops: use the tailnet IP on site.
+- A manual `nc` test needs the feed-to-cutter sequence, or the cut lands too early on the TM-T88.
+- Raspbian armhf works; the script is not 64-bit-only.
+
 ## Troubleshooting
 
 **Printer not detected.** `lsusb` must list it. If `/dev/usb/lp*` never appears (`dmesg |
