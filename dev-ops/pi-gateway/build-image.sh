@@ -16,6 +16,8 @@
 #   WLAN_COUNTRY  regulatory domain, default DE
 #   TIMEZONE      default Europe/Berlin
 #   IMAGE_GROW_MB extra space for the packages during the build, default 1024; shrunk afterwards
+#   PI_GATEWAY_COMMIT  order-printer commit recorded in /etc/pi-gateway-release when the
+#                 directory is not a git checkout
 #
 # Output: <outdir>/pi-gateway-<version>.img.xz plus .sha256; the work directory keeps the
 # downloaded base image for the next build.
@@ -138,7 +140,8 @@ chmod 440 "$MNT/etc/sudoers.d/010_pi-nopasswd"
 touch "$MNT/boot/firmware/ssh"
 note "user $PI_USER, sshd enabled at first boot"
 cp "$SRC_DIR/printer-gateway.env.example" "$MNT/boot/firmware/printer-gateway.env.example"
-git_rev=$(git -C "$SRC_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)
+# The checkout may be a plain copy (rsync to the build host): allow passing the commit in.
+git_rev=${PI_GATEWAY_COMMIT:-$(git -C "$SRC_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)}
 cat >"$MNT/etc/pi-gateway-release" <<REL
 PI_GATEWAY_VERSION=$VERSION
 PI_GATEWAY_BASE=$(basename "$BASE_XZ" .img.xz)

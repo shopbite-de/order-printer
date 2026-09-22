@@ -267,6 +267,6 @@ note "tailnet      $(live && tailscale status --json 2>/dev/null | jq -r '.Backe
 note "printer      $([[ -e /dev/bondrucker ]] && echo "/dev/bondrucker -> $(readlink -f /dev/bondrucker)" || echo 'not plugged in (/dev/bondrucker appears with the printer)')"
 note "bridge       $(systemctl is-active printer-bridge.service 2>/dev/null || true) (port 9100, tailnet only)"
 note "test print   printf 'Testbon\\n\\x1dV\\x42\\x00' | nc -w 3 $TS_IP 9100"
-if [[ $REBOOT_NEEDED == 1 ]]; then
+if live && [[ $REBOOT_NEEDED == 1 ]]; then
     note "REBOOT REQUIRED to activate the hardware watchdog: sudo reboot"
 fi
