@@ -96,6 +96,8 @@ DynamicUser=yes
 SupplementaryGroups=lp
 Restart=always
 RestartSec=2
+# socat exits 143 on SIGTERM; without this every stop shows up as "failed".
+SuccessExitStatus=143
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
