@@ -112,7 +112,7 @@ night at 04:00 Europe/Berlin. Set it to `0` only for debugging, and clean up by 
 ## Checklist: new restaurant
 
 - [ ] Shopware: ShopBite plugin installed (ships the role `order-printer`), integration with that role for this shop, key id and secret in the password manager
-- [ ] Pi gateway for the shop provisioned (`printer-<shop>` in the tailnet, see [pi-gateway.md](pi-gateway.md)) and its tailnet IP noted
+- [ ] Pi gateway for the shop provisioned (`printer-<shop>` in the tailnet, see [pi-gateway.md](pi-gateway.md#prepare-a-pi-for-a-customer)) and its tailnet IP noted
 - [ ] Dokploy: compose service `order-printer-<shop>` in project `order-printer`, branch `main`, auto deploy on
 - [ ] Environment set: `APP_SECRET`, `SHOPWARE_*`, `SHOP_NAME`, `PRINTER_DSN=dummy://`
 - [ ] Deployed, both consumers in the logs, health green

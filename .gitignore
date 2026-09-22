@@ -27,3 +27,8 @@ data/*
 ###< phpunit/phpunit ###
 
 coverage
+
+# Pi gateway image builds (dev-ops/pi-gateway/build-image.sh)
+*.img
+*.img.xz
+dev-ops/pi-gateway/work/
