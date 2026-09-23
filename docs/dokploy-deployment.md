@@ -120,3 +120,4 @@ night at 04:00 Europe/Berlin. Set it to `0` only for debugging, and clean up by 
 - [ ] Receipt copies of open orders appear in `data/receipts/`, orders stay open in Shopware
 - [ ] Cutover: previous printing stopped, `PRINTER_DSN=tcp://<pi-ip>:9100`, redeploy, `printer:test` prints on site, test order prints and moves to *in progress*
 - [ ] Health check goes red when the printer is unplugged (and green again when plugged in)
+- [ ] Monitoring: Uptime Kuma push monitor `Bondrucker <shop>`, its URL as `HEARTBEAT_URL`, redeploy; unplugging the printer turns it red within 5 minutes ([monitoring.md](monitoring.md))

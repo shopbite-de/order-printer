@@ -11,6 +11,7 @@ use Symfony\Component\Scheduler\Schedule;
 use Symfony\Component\Scheduler\ScheduleProviderInterface;
 use Veliu\OrderPrinter\Domain\Command\PrintOpenOrdersCommand;
 use Veliu\OrderPrinter\Domain\Command\PurgeReceiptsCommand;
+use Veliu\OrderPrinter\Infra\Monitoring\SendHeartbeat;
 
 /** @psalm-suppress UnusedClass */
 #[AsSchedule]
@@ -20,6 +21,9 @@ final readonly class OpenOrderProvider implements ScheduleProviderInterface
         /** Days to keep receipt copies; 0 keeps them forever. */
         #[Autowire(env: 'int:RECEIPT_RETENTION_DAYS')]
         private int $receiptRetentionDays = 30,
+        /** Uptime Kuma push URL; empty disables the heartbeat. */
+        #[Autowire(env: 'HEARTBEAT_URL')]
+        private string $heartbeatUrl = '',
     ) {
     }
 
@@ -38,6 +42,10 @@ final readonly class OpenOrderProvider implements ScheduleProviderInterface
                     from: new \DateTimeImmutable('04:00', new \DateTimeZone('Europe/Berlin')),
                 )
             );
+        }
+
+        if ('' !== $this->heartbeatUrl) {
+            $schedule->add(RecurringMessage::every('1 minute', new SendHeartbeat()));
         }
 
         return $schedule;

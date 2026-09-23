@@ -10,6 +10,7 @@ use Symfony\Component\Scheduler\Generator\MessageContext;
 use Symfony\Component\Scheduler\RecurringMessage;
 use Veliu\OrderPrinter\Domain\Command\PrintOpenOrdersCommand;
 use Veliu\OrderPrinter\Domain\Command\PurgeReceiptsCommand;
+use Veliu\OrderPrinter\Infra\Monitoring\SendHeartbeat;
 use Veliu\OrderPrinter\Infra\Symfony\Scheduler\OpenOrderProvider;
 
 #[CoversClass(OpenOrderProvider::class)]
@@ -33,6 +34,15 @@ final class OpenOrderProviderTest extends TestCase
 
         self::assertCount(1, $recurring);
         self::assertInstanceOf(PrintOpenOrdersCommand::class, self::message($recurring[0]));
+    }
+
+    public function testSendsAHeartbeatEveryMinuteWhenAUrlIsConfigured(): void
+    {
+        $recurring = new OpenOrderProvider(0, 'https://status.example.com/api/push/abc')->getSchedule()->getRecurringMessages();
+
+        self::assertCount(2, $recurring);
+        self::assertInstanceOf(SendHeartbeat::class, self::message($recurring[1]));
+        self::assertSame('every 1 minute', (string) $recurring[1]->getTrigger());
     }
 
     private static function message(RecurringMessage $recurring): object

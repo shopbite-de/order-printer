@@ -16,6 +16,9 @@ services:
       SHOP_NAME: ${SHOP_NAME:-}
       # Optional: delete receipt copies after this many days (0 = keep forever)
       RECEIPT_RETENTION_DAYS: ${RECEIPT_RETENTION_DAYS:-30}
+      # Optional: Uptime Kuma push URL, checked and pushed every minute (docs/monitoring.md)
+      HEARTBEAT_URL: ${HEARTBEAT_URL:-}
+      LOG_LEVEL: ${LOG_LEVEL:-notice}
     volumes:
       # SQLite queue + lock tables and a copy of every printed receipt
       - order-printer-data:/app/data

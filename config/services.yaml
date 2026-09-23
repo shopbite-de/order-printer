@@ -21,3 +21,16 @@ services:
 
     # Logs retried / permanently failed print jobs with their order number
     Veliu\OrderPrinter\Infra\Symfony\Messenger\PrintOrderFailedListener: ~
+
+    # MONITORING (docs/monitoring.md)
+    Veliu\OrderPrinter\Infra\Monitoring\SendHeartbeatHandler: ~
+
+    # Symfony's built-in logger, but as JSON lines on stderr from LOG_LEVEL up (default notice),
+    # so OpenObserve gets the level right. Without this it logs plain text from "error" up only.
+    Veliu\OrderPrinter\Infra\Symfony\Log\JsonLogFormatter: ~
+    logger:
+        class: Symfony\Component\HttpKernel\Log\Logger
+        arguments:
+            - '%env(LOG_LEVEL)%'
+            - 'php://stderr'
+            - '@Veliu\OrderPrinter\Infra\Symfony\Log\JsonLogFormatter'

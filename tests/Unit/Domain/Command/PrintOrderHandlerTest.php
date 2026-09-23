@@ -15,12 +15,14 @@ use Veliu\OrderPrinter\Domain\Order\Exception\OrderNotFound;
 use Veliu\OrderPrinter\Domain\Order\Order;
 use Veliu\OrderPrinter\Domain\Order\OrderRepositoryInterface;
 use Veliu\OrderPrinter\Domain\Service\PrintOrderProcessorInterface;
+use Veliu\OrderPrinter\Tests\Support\SpyLogger;
 
 #[CoversClass(PrintOrderHandler::class)]
 final class PrintOrderHandlerTest extends TestCase
 {
     private OrderRepositoryInterface&MockObject $orderRepository;
     private PrintOrderProcessorInterface&MockObject $printOrderProcessor;
+    private SpyLogger $logger;
     private PrintOrderHandler $handler;
 
     #[\Override]
@@ -29,7 +31,8 @@ final class PrintOrderHandlerTest extends TestCase
         $this->orderRepository = $this->createMock(OrderRepositoryInterface::class);
         $this->printOrderProcessor = $this->createMock(PrintOrderProcessorInterface::class);
 
-        $this->handler = new PrintOrderHandler($this->orderRepository, $this->printOrderProcessor);
+        $this->logger = new SpyLogger();
+        $this->handler = new PrintOrderHandler($this->orderRepository, $this->printOrderProcessor, $this->logger);
     }
 
     public function testPrintsTheOrder(): void
@@ -39,6 +42,8 @@ final class PrintOrderHandlerTest extends TestCase
         $this->printOrderProcessor->expects($this->once())->method('__invoke')->with($order, true);
 
         ($this->handler)(new PrintOrderCommand('ORDER-123', true));
+
+        self::assertSame([['level' => 'notice', 'message' => 'Order {orderNumber} printed.', 'context' => ['orderNumber' => 'ORDER-123']]], $this->logger->records);
     }
 
     public function testPropagatesPrinterFailuresSoMessengerRetries(): void
@@ -47,9 +52,14 @@ final class PrintOrderHandlerTest extends TestCase
         $this->orderRepository->method('getByOrderNumber')->willReturn($order);
         $this->printOrderProcessor->method('__invoke')->willThrowException($failure = new \RuntimeException('Cannot connect to printer'));
 
-        $this->expectExceptionObject($failure);
+        try {
+            ($this->handler)(new PrintOrderCommand('ORDER-123', true));
+            self::fail('expected the printer failure');
+        } catch (\RuntimeException $e) {
+            self::assertSame($failure, $e);
+        }
 
-        ($this->handler)(new PrintOrderCommand('ORDER-123', true));
+        self::assertSame([], $this->logger->records, 'a failed print must not count as printed');
     }
 
     public function testUnknownOrderIsNotRetried(): void
