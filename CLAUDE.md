@@ -66,6 +66,8 @@ Service wiring is explicit in `config/services.yaml` and `config/services/*.yaml
 OpenOrderProvider (#[AsSchedule], handled inside the scheduler_default worker)
   ├─ PurgeReceiptsCommand(retentionDays), daily 04:00 Europe/Berlin → no transport: PurgeReceiptsHandler deletes
   │    receipt copies older than RECEIPT_RETENTION_DAYS (0 = never scheduled) via ReceiptArchiveInterface
+  ├─ Infra\Monitoring\SendHeartbeat, every minute, only when HEARTBEAT_URL is set → no transport: SendHeartbeatHandler
+  │    runs PrinterChecker and pushes status=up|down (+ reason) to the Uptime Kuma push URL, never throws (docs/monitoring.md)
   └─ PrintOpenOrdersCommand(markInProgress: true), every 10 s → no transport: handled synchronously
        └─ PrintOpenOrdersHandler: OrderRepository::findNewNumbers()
             └─ PrintOrderCommand(orderNumber, markInProgress) + DeduplicateStamp("print-order-<n>") → transport "async"
@@ -84,6 +86,8 @@ Production runs two supervisor programs, one consuming `scheduler_default` (poll
 - De-duplication is Messenger's own `DeduplicateStamp` (`symfony/lock`): `PrintOpenOrdersHandler` stamps every queued `PrintOrderCommand` with key `print-order-<number>` and `DEDUPLICATION_TTL` 7200 s. `DeduplicateMiddleware` acquires the lock on dispatch and drops the message while it is held; the lock is released after a successful handle and, via `ReleaseDeduplicationLockOnFailureListener`, when Messenger gives up. The TTL only covers a worker dying mid-job and must exceed retry window + Doctrine `redeliver_timeout` (1 h). The store is `doctrine.dbal.default_connection` (`config/packages/lock.yaml`), table `lock_keys` auto-created: it must be a shared, token-based store because the scheduler worker acquires and the print worker releases; `flock` would neither cross processes nor expire. With the dev `sync://` transport the handler releases the lock itself when the inline print throws.
 - `PrintOrderFailedListener` (`WorkerMessageFailedEvent`, after Messenger's retry listener) logs a `warning` per retried attempt and an `error` with `orderNumber`, `attempts` and `error` context when Messenger gives up. The message also lands in the `failed` transport for inspection; the released lock lets the next poll re-queue the order if it is still open.
 - `OrderNotFound` is wrapped in `UnrecoverableMessageHandlingException`: no retries for orders Shopware does not know.
+- `PrintOrderHandler` logs `notice` "Order <n> printed." after every successful print; monitoring counts these lines.
+- Logging: no Monolog. `config/services.yaml` redefines Symfony's built-in `logger` (`HttpKernel\Log\Logger`) to write JSON lines (`Infra\Symfony\Log\JsonLogFormatter`) to stderr from `LOG_LEVEL` up; without that it would log plain text from `error` up only. PHPUnit sets `LOG_LEVEL=emergency`, unit tests use `Tests\Support\SpyLogger`.
 - Known gap: if the print succeeds but `markInProgress()` fails (Shopware API error), the retry prints the receipt again.
 
 ### Printing
@@ -116,7 +120,7 @@ Auth is OAuth client credentials. `config/services/shopware.yaml` defines a seco
 
 ## Environment
 
-Copy `.env` to `.env.local`. Required: `SHOPWARE_HOST`, `SHOPWARE_CLIENT_ID`, `SHOPWARE_CLIENT_SECRET`, `PRINTER_DSN` (see the table above; `.env` defaults to `file:///dev/null`), `DATA_DIR` (relative to project dir, default `/data/receipts/`), `RECEIPT_RETENTION_DAYS` (default 30). Optional: `SHOP_NAME` for test receipts (read with `env(default::SHOP_NAME)`, so it may be absent). `DATABASE_URL` points at SQLite and backs the Messenger queue (`messenger_messages`) and the deduplication locks (`lock_keys`); both tables are created on first use. There are no Doctrine entities.
+Copy `.env` to `.env.local`. Required: `SHOPWARE_HOST`, `SHOPWARE_CLIENT_ID`, `SHOPWARE_CLIENT_SECRET`, `PRINTER_DSN` (see the table above; `.env` defaults to `file:///dev/null`), `DATA_DIR` (relative to project dir, default `/data/receipts/`), `RECEIPT_RETENTION_DAYS` (default 30). Optional: `SHOP_NAME` for test receipts (read with `env(default::SHOP_NAME)`, so it may be absent), `HEARTBEAT_URL` (empty = no heartbeat), `LOG_LEVEL` (default `notice`). `DATABASE_URL` points at SQLite and backs the Messenger queue (`messenger_messages`) and the deduplication locks (`lock_keys`); both tables are created on first use. There are no Doctrine entities.
 
 ## Conventions
 

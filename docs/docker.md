@@ -58,6 +58,8 @@ docker compose exec order-printer su-exec app php bin/console printer:test
 | `SHOP_NAME`              | no       | Restaurant name on `printer:test` receipts, defaults to the `SHOPWARE_HOST` domain                            |
 | `DATA_DIR`               | no       | Receipt copies, relative to `/app`; default `/data/receipts/`                                                  |
 | `RECEIPT_RETENTION_DAYS` | no       | Delete receipt copies (personal data) after this many days, daily at 04:00 Europe/Berlin; default `30`, `0` keeps them |
+| `HEARTBEAT_URL`          | no       | Uptime Kuma push URL: every minute the printer is checked and the result pushed, see [monitoring.md](monitoring.md); empty = off |
+| `LOG_LEVEL`              | no       | Minimum level of the JSON log lines on stderr; default `notice` (one line per printed order)                   |
 
 The image ships `docker/app.env` as `/app/.env` (production defaults: `APP_ENV=prod`, the SQLite
 `DATABASE_URL`, the Doctrine Messenger transport, `PRINTER_DSN=dummy://`, `DATA_DIR`,
