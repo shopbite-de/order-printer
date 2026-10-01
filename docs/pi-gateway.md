@@ -15,15 +15,100 @@ image, at first boot from a file on the boot partition.
 
 ## Hardware
 
-| Part          | Notes                                                                                   |
-| ------------- | --------------------------------------------------------------------------------------- |
-| Raspberry Pi  | any model with USB and network; a Pi Zero 2 W or Pi 3/4 is plenty                        |
-| microSD card  | 8 GB or more, a brand that tolerates power loss (Samsung Pro Endurance, SanDisk MAX)     |
-| Power supply  | the official one; brown-outs are the most common cause of "printer sometimes offline"   |
-| Printer       | ESC/POS thermal printer with USB, recognised by the Linux `usblp` driver (`/dev/usb/lp0`) |
-| Network       | Ethernet preferred, WLAN works; only outbound access is needed, no port forwarding        |
+Shopping list for a new restaurant:
 
-## Flash the image
+| Part          | Recommendation                                                                                                    |
+| ------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Raspberry Pi  | **Raspberry Pi 4 Model B, 2 GB**: Ethernet, four USB-A ports, well cooled. Any 64-bit model (Pi 3 or newer) boots the image; Pi 1, 2 and Zero (v1) do not. A Pi Zero 2 W works but needs a USB OTG adapter and has WLAN only |
+| Power supply  | the official Raspberry Pi USB-C supply (15 W); brown-outs are the most common cause of "printer sometimes offline" |
+| Case          | the official case or any case with vents; no fan needed                                                           |
+| microSD card  | 32 GB, an endurance card that tolerates power loss: SanDisk MAX Endurance or Samsung PRO Endurance                |
+| Printer       | ESC/POS thermal printer with USB, recognised by the Linux `usblp` driver (`/dev/usb/lp0`); see the tested models  |
+| Network       | Ethernet preferred, WLAN works; only outbound access is needed, no port forwarding                                |
+
+Tested printers (`lsusb` shows `idVendor:idProduct`):
+
+| Printer                 | USB id      | Status                                                                     |
+| ----------------------- | ----------- | -------------------------------------------------------------------------- |
+| Epson TM-T88 (IV/V)     | `04b8:0202` | in production at the first restaurant since 2026-09-22, cut sequence `\x1dV\x42\x00` |
+
+The first restaurant runs on an older Pi 2/3 with 32-bit Raspbian that was set up by the script,
+not from the image; the Pi 4 recommendation is the target for new restaurants.
+
+## Prepare a Pi for a customer
+
+Five steps, no Linux knowledge needed on site, about 15 minutes plus the copy time of the card:
+
+1. **Flash the golden image** `pi-gateway-<version>.img.xz` (see [Golden image](#golden-image)
+   for where it lives) with Raspberry Pi Imager: *Choose OS → Use custom*, pick the `.img.xz`,
+   choose the card, and answer **No** when the Imager offers to apply OS customisation (it would
+   overwrite the image's user and hostname settings). Or on Linux/macOS:
+   `xzcat pi-gateway-<version>.img.xz | sudo dd of=/dev/sdX bs=4M status=progress conv=fsync`.
+2. **Put the identity on the card.** Re-insert the card; it shows up as `bootfs`. Copy
+   `printer-gateway.env.example` from that partition to `printer-gateway.env` next to it and
+   fill in `CUSTOMER=<shop-slug>` and `TS_AUTHKEY=` (the reusable `tag:printer` key from the
+   password manager, see [tailscale.md](tailscale.md#auth-key-for-the-pi-image)). Add
+   `WIFI_SSID`/`WIFI_PASSWORD` only when the restaurant has no Ethernet. Eject the card.
+3. **Boot on site (or on your desk).** Card in, printer on USB, Ethernet, power. The first boot
+   takes about two minutes (the root filesystem expands, the user is created, the Pi joins the
+   tailnet as `printer-<shop>` and deletes `printer-gateway.env`). It appears in the Tailscale
+   admin console and in `tailscale status` on any admin device.
+4. **Test print** from any admin device in the tailnet:
+   `printf 'Testbon\n\x1dV\x42\x00' | nc -w 3 $(tailscale ip -4 printer-<shop>) 9100`.
+5. **Point the order printer at it:** `PRINTER_DSN=tcp://<tailnet-ip>:9100` on the shop's
+   order-printer service in Dokploy, redeploy, `printer:test` from the container
+   ([dokploy-deployment.md](dokploy-deployment.md)).
+
+If the Pi does not show up after five minutes: the card still carries `printer-gateway.env`
+when provisioning failed (wrong key, no network); on site `journalctl -u
+printer-gateway-provision` says why, see [Troubleshooting](#troubleshooting).
+
+## Golden image
+
+The golden image is Raspberry Pi OS Lite (64-bit) with `install.sh` applied but no customer
+identity: no hostname, no tailnet login, no machine-id, no SSH host keys. Everything specific to
+a shop comes from `printer-gateway.env` at first boot. What is baked in:
+
+- the packages, udev rule, `printer-bridge`, firewall, unattended upgrades and watchdog from the
+  script (see [Run the script](#run-the-script)),
+- Tailscale installed and enabled, logged out,
+- timezone `Europe/Berlin`, WLAN regulatory domain `DE`, `sshd` enabled (reachable only through
+  the tailnet unless the firewall says otherwise),
+- user `pi` with `sudo` without password, created at first boot from `userconf.txt`. The
+  password is generated by the build and printed at its end; it is only needed at a keyboard or
+  for LAN SSH, Tailscale SSH does not use it. Store it in the password manager with the image
+  version,
+- `/etc/pi-gateway-release` with the image version, the base image and the order-printer commit.
+
+**Where it lives.** The image is about 500 MB, too big for the repository. It is kept locally
+on the admin's machine in `~/workspace/shopbite/pi-images/` as `pi-gateway-<version>.img.xz`
+with a `.sha256` next to it; `<version>` is the build date. Keep the last two versions.
+
+**Build a new one** (after changes to `install.sh`, `printer-gateway-provision` or a new
+Raspberry Pi OS release; the base image URL and checksums are pinned in the script). It needs
+root, loop devices and an arm64 binfmt handler, so it runs on a Linux box such as the Dokploy
+host, not on a laptop without `sudo`:
+
+```bash
+# on the build host (x86_64): one-off, until reboot
+docker run --privileged --rm tonistiigi/binfmt --install arm64
+# from the order-printer checkout
+sudo OUT_DIR=/root/pi-image/out ./dev-ops/pi-gateway/build-image.sh -v $(date +%F)
+```
+
+The script downloads the pinned base image, grows it by 1 GB, runs `install.sh` inside an
+arm64 chroot (the script notices the missing systemd and only installs files and enables
+units), applies the settings above, clears the identity, shrinks the result with
+[PiShrink](https://github.com/Drewsif/PiShrink) (pinned commit, checksum verified) and writes
+`pi-gateway-<version>.img.xz` plus `.sha256`. Verify the checksum after copying it to the
+admin machine. A quick test of a fresh build is step 3 to 4 above with a spare Pi.
+
+## Manual setup without the image
+
+Use this path for a Pi that already runs Raspberry Pi OS (the first restaurant), or when no
+image is at hand.
+
+### Flash the image
 
 1. Raspberry Pi Imager → **Raspberry Pi OS Lite (64-bit)**.
 2. In the settings (gear icon): hostname anything (the script renames it), user `pi` with a
@@ -32,7 +117,7 @@ image, at first boot from a file on the boot partition.
    script closes it afterwards.
 3. Boot the Pi with the printer connected and switched on.
 
-## Run the script
+### Run the script
 
 From your laptop, with the Pi reachable in the LAN (its address is shown by your router, or
 try `ssh pi@raspberrypi.local`):
@@ -66,7 +151,7 @@ hardware watchdog. Reboot, then test.
 
 ### Provisioning from the boot partition
 
-A Pi that was set up without `CUSTOMER` (or an SD card flashed from such an image) gets its
+A Pi that was set up without `CUSTOMER` (or an SD card flashed from the golden image) gets its
 identity from `printer-gateway.env` on the boot partition, the FAT partition that Windows and
 macOS mount as `bootfs` when the card is plugged into a laptop. Copy
 `dev-ops/pi-gateway/printer-gateway.env.example` there as `printer-gateway.env` and fill in:
@@ -84,7 +169,7 @@ is parsed line by line (Windows line endings and quotes are fine, it is never ex
 shell). Without network, or with a key that does not start with `tskey-auth-`, the attempt is
 repeated every 30 s and the file stays on the card for correction; `journalctl -u
 printer-gateway-provision` shows why. The Pi then appears as `printer-<shop>` in the
-tailnet, nothing else is needed. This is the basis for a pre-built image (#47).
+tailnet, nothing else is needed. This is what the golden image relies on.
 
 Nothing from a legacy order-printer installation on the same Pi (PHP, supervisor, the
 repository clone) is touched; that is removed during the cutover.
