@@ -10,7 +10,7 @@ final readonly class Address
         public string $name,
         public string $street,
         public string $city,
-        public string $phone,
+        public ?string $phone,
         public ?string $additional,
     ) {
     }

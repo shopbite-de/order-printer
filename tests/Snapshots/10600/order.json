@@ -1,0 +1,269 @@
+{
+  "total": 1,
+  "data": [
+    {
+      "shippingCosts": {
+        "totalPrice": 0,
+        "apiAlias": "calculated_price"
+      },
+      "shippingOrderAddress": {
+        "firstName": "firstname",
+        "lastName": "lastname",
+        "street": "dummy street 1",
+        "zipcode": null,
+        "city": "Obertshausen",
+        "phoneNumber": null,
+        "additionalAddressLine1": null,
+        "id": "019ba3dded8d712a8112840fb25db915",
+        "apiAlias": "order_address"
+      },
+      "shippingMethod": {
+        "name": "Lieferung",
+        "apiAlias": "shipping_method"
+      },
+      "order": {
+        "createdAt": "2026-01-09T17:46:29.184+00:00",
+        "orderNumber": "10600",
+        "amountTotal": 69,
+        "lineItems": [
+          {
+            "quantity": 2,
+            "totalPrice": 19,
+            "label": "Tortellini a la Panna",
+            "payload": {
+              "isNew": false,
+              "stock": -38,
+              "taxId": "018d9f1649bd7368a2db0f6082d96622",
+              "tagIds": null,
+              "options": [],
+              "features": [],
+              "parentId": null,
+              "createdAt": "2024-02-18 21:43:53.606",
+              "optionIds": null,
+              "streamIds": null,
+              "isCloseout": false,
+              "categoryIds": [
+                "018d9f1649c9709580aab97a16368d8d",
+                "0197baf0a6a971eaada59ed5c84138de",
+                "018db8c78767789fad08cf935dbe10cb"
+              ],
+              "propertyIds": null,
+              "releaseDate": null,
+              "customFields": [],
+              "productNumber": "67",
+              "manufacturerId": null,
+              "purchasePrices": "{\"extensions\":[],\"currencyId\":\"b7d2554b0ce847cd82f3ac9bd1c0dfca\",\"net\":0,\"gross\":0,\"linked\":true,\"listPrice\":null,\"percentage\":null,\"regulationPrice\":null}",
+              "markAsTopseller": false
+            },
+            "parentId": null,
+            "type": "product",
+            "id": "019ba3dded8c70b0994e48db965d7345",
+            "apiAlias": "order_line_item"
+          },
+          {
+            "quantity": 1,
+            "totalPrice": 9.5,
+            "label": "Pizza Calzone",
+            "payload": {
+              "isNew": false,
+              "stock": -19,
+              "taxId": "018d9f1649bd7368a2db0f6082d96622",
+              "tagIds": null,
+              "options": [],
+              "features": [],
+              "parentId": null,
+              "createdAt": "2024-02-18 15:03:22.250",
+              "optionIds": null,
+              "streamIds": null,
+              "isCloseout": false,
+              "categoryIds": [
+                "018d9f1649c9709580aab97a16368d8d",
+                "018dadb399837af3aa669c8fff4f4d6c"
+              ],
+              "propertyIds": [
+                "019838d0c4817cdabe982dc9bd3b3477",
+                "019838fb7acd788dbed55ea0934fd3c4",
+                "01983906a5077d7d8f832bbdfb70ba41",
+                "01983c902aa8762692d14dd5ac70a927"
+              ],
+              "releaseDate": null,
+              "customFields": [],
+              "productNumber": "30",
+              "manufacturerId": null,
+              "purchasePrices": "{\"extensions\":[],\"currencyId\":\"b7d2554b0ce847cd82f3ac9bd1c0dfca\",\"net\":0,\"gross\":0,\"linked\":true,\"listPrice\":null,\"percentage\":null,\"regulationPrice\":null}",
+              "markAsTopseller": false
+            },
+            "parentId": null,
+            "type": "product",
+            "id": "019ba3dded8c70b0994e48db96818ff1",
+            "apiAlias": "order_line_item"
+          },
+          {
+            "quantity": 1,
+            "totalPrice": 11,
+            "label": "Insalata di Pollo",
+            "payload": {
+              "isNew": false,
+              "stock": -65,
+              "taxId": "018d9f1649bd7368a2db0f6082d96622",
+              "tagIds": null,
+              "options": [
+                {
+                  "group": "Soße",
+                  "option": "Joghurtsoße"
+                }
+              ],
+              "features": [],
+              "parentId": "018dbca9c360705d94e803b83aea3e24",
+              "createdAt": "2025-07-25 12:54:33.993",
+              "optionIds": [
+                "019841a3880c7004a4e7ee381f860af3"
+              ],
+              "streamIds": null,
+              "isCloseout": false,
+              "categoryIds": [
+                "018d9f1649c9709580aab97a16368d8d",
+                "018dadb30d2c76fb96bbd99f6c13baa4"
+              ],
+              "propertyIds": [
+                "01971862e73f7d7cb21b49c673a09efc",
+                "0198388bd5f374029e124dca4d465977",
+                "019838bb644271d891c61bd75a6661cd",
+                "019838bd523076cbaf4b70e7de38b204",
+                "019838cb1dec71d2a0b5a3931b5f0d32",
+                "019838e7299e7f008def449bf7a60354",
+                "019838eb846674959652438c63633977"
+              ],
+              "releaseDate": null,
+              "customFields": [],
+              "productNumber": "18",
+              "manufacturerId": null,
+              "purchasePrices": "{\"extensions\":[],\"currencyId\":\"b7d2554b0ce847cd82f3ac9bd1c0dfca\",\"net\":0,\"gross\":0,\"linked\":true,\"listPrice\":null,\"percentage\":null,\"regulationPrice\":null}",
+              "markAsTopseller": true
+            },
+            "parentId": null,
+            "type": "product",
+            "id": "019ba3dded8c70b0994e48db975f5278",
+            "apiAlias": "order_line_item"
+          },
+          {
+            "quantity": 1,
+            "totalPrice": 12,
+            "label": "Tagliatelle Gomberetti",
+            "payload": {
+              "isNew": false,
+              "stock": -7,
+              "taxId": "018d9f1649bd7368a2db0f6082d96622",
+              "tagIds": null,
+              "options": [],
+              "features": [],
+              "parentId": null,
+              "createdAt": "2024-02-18 21:51:12.369",
+              "optionIds": null,
+              "streamIds": null,
+              "isCloseout": false,
+              "categoryIds": [
+                "018d9f1649c9709580aab97a16368d8d",
+                "0197baf0a6a971eaada59ed5c84138de",
+                "018db8ceaa557868b7cc2bece911f746"
+              ],
+              "propertyIds": null,
+              "releaseDate": null,
+              "customFields": [],
+              "productNumber": "79",
+              "manufacturerId": null,
+              "purchasePrices": "{\"extensions\":[],\"currencyId\":\"b7d2554b0ce847cd82f3ac9bd1c0dfca\",\"net\":0,\"gross\":0,\"linked\":true,\"listPrice\":null,\"percentage\":null,\"regulationPrice\":null}",
+              "markAsTopseller": false
+            },
+            "parentId": null,
+            "type": "product",
+            "id": "019ba3dded8c70b0994e48db97e04c78",
+            "apiAlias": "order_line_item"
+          },
+          {
+            "quantity": 1,
+            "totalPrice": 8.5,
+            "label": "Pizza Spezial",
+            "payload": {
+              "isNew": false,
+              "stock": -34,
+              "taxId": "018d9f1649bd7368a2db0f6082d96622",
+              "tagIds": null,
+              "options": [],
+              "features": [],
+              "parentId": null,
+              "createdAt": "2024-02-18 15:02:26.147",
+              "optionIds": null,
+              "streamIds": null,
+              "isCloseout": false,
+              "categoryIds": [
+                "018d9f1649c9709580aab97a16368d8d",
+                "018dadb399837af3aa669c8fff4f4d6c"
+              ],
+              "propertyIds": [
+                "01983906a5077d7d8f832bbdfb70ba41",
+                "0198390985997440880c44eb4b882a4d",
+                "0198390a492b76f3bcfd000be653f410",
+                "01983c8c5efa7a0fa357f304aa6f1695"
+              ],
+              "releaseDate": null,
+              "customFields": [],
+              "productNumber": "28",
+              "manufacturerId": null,
+              "purchasePrices": "{\"extensions\":[],\"currencyId\":\"b7d2554b0ce847cd82f3ac9bd1c0dfca\",\"net\":0,\"gross\":0,\"linked\":true,\"listPrice\":null,\"percentage\":null,\"regulationPrice\":null}",
+              "markAsTopseller": false
+            },
+            "parentId": null,
+            "type": "product",
+            "id": "019ba3dded8c70b0994e48db98aaec04",
+            "apiAlias": "order_line_item"
+          },
+          {
+            "quantity": 1,
+            "totalPrice": 9,
+            "label": "Rigatoni Bolognese",
+            "payload": {
+              "isNew": false,
+              "stock": -13,
+              "taxId": "018d9f1649bd7368a2db0f6082d96622",
+              "tagIds": null,
+              "options": [],
+              "features": [],
+              "parentId": null,
+              "createdAt": "2024-02-18 15:27:42.779",
+              "optionIds": null,
+              "streamIds": null,
+              "isCloseout": false,
+              "categoryIds": [
+                "018d9f1649c9709580aab97a16368d8d",
+                "0197baf0a6a971eaada59ed5c84138de",
+                "018db8c72a067dd6b9bf545b6e2b1443"
+              ],
+              "propertyIds": null,
+              "releaseDate": null,
+              "customFields": [],
+              "productNumber": "60",
+              "manufacturerId": null,
+              "purchasePrices": "{\"extensions\":[],\"currencyId\":\"b7d2554b0ce847cd82f3ac9bd1c0dfca\",\"net\":0,\"gross\":0,\"linked\":true,\"listPrice\":null,\"percentage\":null,\"regulationPrice\":null}",
+              "markAsTopseller": false
+            },
+            "parentId": null,
+            "type": "product",
+            "id": "019ba3dded8c70b0994e48db998184b7",
+            "apiAlias": "order_line_item"
+          }
+        ],
+        "stateMachineState": {
+          "technicalName": "in_progress",
+          "apiAlias": "state_machine_state"
+        },
+        "customerComment": "Wunschlieferzeit: 19:20",
+        "id": "019ba3dded8d712a8112840fb3c79447",
+        "apiAlias": "order"
+      },
+      "id": "019ba3dded8d712a8112840fb2701b27",
+      "apiAlias": "order_delivery"
+    }
+  ],
+  "aggregations": []
+}

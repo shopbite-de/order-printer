@@ -125,7 +125,10 @@ final readonly class PrintProcessor implements PrintOrderProcessorInterface
             $printer->text(sprintf("%s\n", $additional));
         }
         $printer->text(sprintf("%s\n", $address->city));
-        $printer->text(sprintf("%s\n", $address->phone));
+        // orders from the Shopware Admin or an import may have no phone number (#75)
+        if ($phone = $address->phone) {
+            $printer->text(sprintf("%s\n", $phone));
+        }
 
         $printer->text($this->getDivider());
 
