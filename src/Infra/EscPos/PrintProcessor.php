@@ -7,6 +7,8 @@ namespace Veliu\OrderPrinter\Infra\EscPos;
 use Mike42\Escpos\PrintConnectors\FilePrintConnector;
 use Mike42\Escpos\PrintConnectors\MultiplePrintConnector;
 use Mike42\Escpos\Printer;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Filesystem\Filesystem;
 use Veliu\OrderPrinter\Domain\Address\Address;
@@ -34,6 +36,7 @@ final readonly class PrintProcessor implements PrintOrderProcessorInterface
         string $projectDir,
         private OrderRepositoryInterface $orderRepository,
         private PrintConnectorFactory $connectorFactory = new PrintConnectorFactory(),
+        private LoggerInterface $logger = new NullLogger(),
     ) {
         $this->fileDirectory = $projectDir.$dataDirectory;
         $this->receiptPositionGenerator = new ReceiptPositionGenerator();
@@ -73,6 +76,19 @@ final readonly class PrintProcessor implements PrintOrderProcessorInterface
         // dry run against a live shop (receipt copies are still archived).
         if ($markInProgress && $order->isNew && !$this->isDryRun()) {
             $this->orderRepository->markInProgress($order);
+        }
+
+        // "Gedruckt um" in the backoffice and the end of a "Jetzt drucken" request. The receipt
+        // is out at this point, so a failure here must not make Messenger print it again.
+        if (!$this->isDryRun()) {
+            try {
+                $this->orderRepository->markPrinted($order);
+            } catch (\Throwable $e) {
+                $this->logger->warning('Order {orderNumber} printed, but storing the print time failed: {error}', [
+                    'orderNumber' => $order->number,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
     }
 

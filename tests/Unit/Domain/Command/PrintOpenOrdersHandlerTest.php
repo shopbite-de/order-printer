@@ -17,6 +17,7 @@ use Veliu\OrderPrinter\Domain\Command\PrintOpenOrdersCommand;
 use Veliu\OrderPrinter\Domain\Command\PrintOpenOrdersHandler;
 use Veliu\OrderPrinter\Domain\Command\PrintOrderCommand;
 use Veliu\OrderPrinter\Domain\Order\OrderRepositoryInterface;
+use Veliu\OrderPrinter\Domain\Order\ReprintRequest;
 
 #[CoversClass(PrintOpenOrdersHandler::class)]
 final class PrintOpenOrdersHandlerTest extends TestCase
@@ -86,5 +87,31 @@ final class PrintOpenOrdersHandlerTest extends TestCase
         $this->expectExceptionObject($failure);
 
         ($this->handler)(new PrintOpenOrdersCommand(true));
+    }
+
+    public function testQueuesReprintRequestsWithTheirOwnKeyAndSkipsOpenOrders(): void
+    {
+        $this->orderRepository->method('findNewNumbers')->willReturn(['ORDER-001']);
+        $this->orderRepository->method('findReprintRequests')->willReturn([
+            new ReprintRequest('ORDER-001', '2026-10-11T12:00:00.000Z'), // open: printed by the normal path
+            new ReprintRequest('ORDER-002', '2026-10-11T12:01:00.000Z'),
+        ]);
+
+        $dispatched = [];
+        $this->messageBus->method('dispatch')
+            ->willReturnCallback(function (PrintOrderCommand $command, array $stamps) use (&$dispatched): Envelope {
+                $dispatched[] = [$command, $stamps[0]];
+
+                return new Envelope($command, $stamps);
+            });
+
+        ($this->handler)(new PrintOpenOrdersCommand(true));
+
+        self::assertCount(2, $dispatched);
+        [$reprint, $stamp] = $dispatched[1];
+        self::assertSame('ORDER-002', $reprint->orderNumber);
+        self::assertSame('2026-10-11T12:01:00.000Z', $reprint->reprintRequestedAt);
+        self::assertSame('reprint-order-ORDER-002-'.md5('2026-10-11T12:01:00.000Z'), (string) $stamp->getKey());
+        self::assertNull($dispatched[0][0]->reprintRequestedAt);
     }
 }

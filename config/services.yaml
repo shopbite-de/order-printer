@@ -15,7 +15,10 @@ services:
     Veliu\OrderPrinter\Infra\Symfony\Scheduler\OpenOrderProvider: ~
 
     # MESSAGE HANDLER
-    Veliu\OrderPrinter\Domain\Command\PrintOrderHandler: ~
+    Veliu\OrderPrinter\Domain\Command\PrintOrderHandler:
+        arguments:
+            # "Jetzt drucken" prints at most once per request (same shared lock store as the deduplication)
+            $lockFactory: '@lock.factory'
     Veliu\OrderPrinter\Domain\Command\PrintOpenOrdersHandler: ~
     Veliu\OrderPrinter\Domain\Command\PurgeReceiptsHandler: ~
 

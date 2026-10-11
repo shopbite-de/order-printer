@@ -10,6 +10,7 @@ use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Stamp\DeduplicateStamp;
 use Veliu\OrderPrinter\Domain\Order\OrderRepositoryInterface;
+use Veliu\OrderPrinter\Domain\Order\ReprintRequest;
 
 /**
  * @psalm-api
@@ -39,20 +40,47 @@ final readonly class PrintOpenOrdersHandler
 
     public function __invoke(PrintOpenOrdersCommand $command): void
     {
-        foreach ($this->orderRepository->findNewNumbers() as $orderNumber) {
-            $stamp = new DeduplicateStamp(self::deduplicationKey($orderNumber), self::DEDUPLICATION_TTL);
-
-            try {
-                $this->messageBus->dispatch(new PrintOrderCommand($orderNumber, $command->markInProgress), [$stamp]);
-            } catch (\Throwable $e) {
-                // Only reachable with a synchronous transport (dev), where the print ran inline
-                // and failed: release the lock so the next poll tries again instead of waiting
-                // for it to expire.
-                $this->releaseQuietly($stamp);
-
-                throw $e;
-            }
+        $openNumbers = $this->orderRepository->findNewNumbers();
+        foreach ($openNumbers as $orderNumber) {
+            $this->dispatch(
+                new PrintOrderCommand($orderNumber, $command->markInProgress),
+                new DeduplicateStamp(self::deduplicationKey($orderNumber), self::DEDUPLICATION_TTL),
+            );
         }
+
+        // "Jetzt drucken" from the backoffice. An open order is printed by the loop above anyway;
+        // the key contains the request time, so each request prints exactly once.
+        foreach ($this->orderRepository->findReprintRequests() as $request) {
+            if (\in_array($request->orderNumber, $openNumbers, true)) {
+                continue;
+            }
+            $this->dispatch(
+                new PrintOrderCommand($request->orderNumber, $command->markInProgress, $request->requestedAt),
+                new DeduplicateStamp(self::reprintDeduplicationKey($request), self::DEDUPLICATION_TTL),
+            );
+        }
+    }
+
+    private function dispatch(PrintOrderCommand $message, DeduplicateStamp $stamp): void
+    {
+        try {
+            $this->messageBus->dispatch($message, [$stamp]);
+        } catch (\Throwable $e) {
+            // Only reachable with a synchronous transport (dev), where the print ran inline
+            // and failed: release the lock so the next poll tries again instead of waiting
+            // for it to expire.
+            $this->releaseQuietly($stamp);
+
+            throw $e;
+        }
+    }
+
+    /**
+     * @psalm-return non-empty-string
+     */
+    public static function reprintDeduplicationKey(ReprintRequest $request): string
+    {
+        return 'reprint-order-'.$request->orderNumber.'-'.md5($request->requestedAt);
     }
 
     /**

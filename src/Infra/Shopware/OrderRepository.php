@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Veliu\OrderPrinter\Infra\Shopware;
 
+use Psr\Clock\ClockInterface;
 use Veliu\OrderPrinter\Domain\Address\Address;
 use Veliu\OrderPrinter\Domain\Api\ClientInterface;
 use Veliu\OrderPrinter\Domain\Order\Exception\OrderNotFound;
@@ -13,6 +14,9 @@ use Veliu\OrderPrinter\Domain\Order\OrderRepositoryInterface;
 use Veliu\OrderPrinter\Domain\Receipt\ReceiptPositionPrintTypeEnum;
 use Veliu\OrderPrinter\Infra\Shopware\Api\Order\FindOrderNumbersRequest;
 use Veliu\OrderPrinter\Infra\Shopware\Api\Order\FindOrderNumbersResponse;
+use Veliu\OrderPrinter\Infra\Shopware\Api\Order\FindReprintRequestsRequest;
+use Veliu\OrderPrinter\Infra\Shopware\Api\Order\FindReprintRequestsResponse;
+use Veliu\OrderPrinter\Infra\Shopware\Api\Order\MarkPrintedRequest;
 use Veliu\OrderPrinter\Infra\Shopware\Api\Order\UpdateOrderStateRequest;
 use Veliu\OrderPrinter\Infra\Shopware\Api\OrderDelivery\FindDeliveriesRequest;
 use Veliu\OrderPrinter\Infra\Shopware\Api\OrderDelivery\FindDeliveriesResponse;
@@ -22,9 +26,29 @@ use Veliu\OrderPrinter\Infra\Shopware\ResponseObject\OrderLineItem;
 /** @psalm-api  */
 final readonly class OrderRepository implements OrderRepositoryInterface
 {
+    /** "Jetzt drucken" requests older than this are ignored (a forgotten request never prints days later). */
+    public const string REPRINT_WINDOW = 'PT24H';
+
     public function __construct(
         private ClientInterface $client,
+        private ClockInterface $clock,
     ) {
+    }
+
+    #[\Override]
+    public function findReprintRequests(): array
+    {
+        $since = $this->clock->now()->sub(new \DateInterval(self::REPRINT_WINDOW));
+
+        return FindReprintRequestsResponse::fromResponse(
+            $this->client->request(new FindReprintRequestsRequest($since))
+        )->requests;
+    }
+
+    #[\Override]
+    public function markPrinted(Order $order): void
+    {
+        $this->client->request(new MarkPrintedRequest($order->identifier, $this->clock->now()));
     }
 
     #[\Override]

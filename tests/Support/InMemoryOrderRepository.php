@@ -14,6 +14,9 @@ use Veliu\OrderPrinter\Domain\Order\OrderRepositoryInterface;
 final class InMemoryOrderRepository implements OrderRepositoryInterface
 {
     public int $markInProgressCalls = 0;
+    public int $markPrintedCalls = 0;
+    /** @var list<\Veliu\OrderPrinter\Domain\Order\ReprintRequest> */
+    public array $reprintRequests = [];
     private bool $open;
 
     public function __construct(private readonly Order $order)
@@ -42,6 +45,19 @@ final class InMemoryOrderRepository implements OrderRepositoryInterface
     {
         ++$this->markInProgressCalls;
         $this->open = false;
+    }
+
+    #[\Override]
+    public function findReprintRequests(): array
+    {
+        return $this->reprintRequests;
+    }
+
+    #[\Override]
+    public function markPrinted(Order $order): void
+    {
+        ++$this->markPrintedCalls;
+        $this->reprintRequests = [];
     }
 
     public function isOpen(): bool

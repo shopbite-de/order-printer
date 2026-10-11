@@ -7,6 +7,8 @@ namespace Veliu\OrderPrinter\Tests\Domain\Command;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Lock\LockFactory;
+use Symfony\Component\Lock\Store\InMemoryStore;
 use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
 use Veliu\OrderPrinter\Domain\Address\Address;
 use Veliu\OrderPrinter\Domain\Command\PrintOrderCommand;
@@ -43,7 +45,42 @@ final class PrintOrderHandlerTest extends TestCase
 
         ($this->handler)(new PrintOrderCommand('ORDER-123', true));
 
-        self::assertSame([['level' => 'notice', 'message' => 'Order {orderNumber} printed.', 'context' => ['orderNumber' => 'ORDER-123']]], $this->logger->records);
+        self::assertSame([['level' => 'notice', 'message' => 'Order {orderNumber} printed.', 'context' => ['orderNumber' => 'ORDER-123', 'reprint' => false]]], $this->logger->records);
+    }
+
+    public function testAReprintRequestPrintsOnlyOnce(): void
+    {
+        $handler = new PrintOrderHandler($this->orderRepository, $this->printOrderProcessor, $this->logger, new LockFactory(new InMemoryStore()));
+        $this->orderRepository->method('getByOrderNumber')->willReturn($this->createOrder('ORDER-123'));
+        $this->printOrderProcessor->expects($this->exactly(2))->method('__invoke');
+
+        $handler(new PrintOrderCommand('ORDER-123', true, '2026-10-11T12:00:00.000Z'));
+        // same request again (e.g. storing the print time failed): no second receipt
+        $handler(new PrintOrderCommand('ORDER-123', true, '2026-10-11T12:00:00.000Z'));
+        // a new request prints again
+        $handler(new PrintOrderCommand('ORDER-123', true, '2026-10-11T12:05:00.000Z'));
+
+        self::assertSame('Reprint of order {orderNumber} already done.', $this->logger->records[1]['message']);
+    }
+
+    public function testAFailedReprintMayBeRetried(): void
+    {
+        $handler = new PrintOrderHandler($this->orderRepository, $this->printOrderProcessor, $this->logger, new LockFactory(new InMemoryStore()));
+        $this->orderRepository->method('getByOrderNumber')->willReturn($this->createOrder('ORDER-123'));
+        $calls = 0;
+        $this->printOrderProcessor->method('__invoke')->willReturnCallback(static function () use (&$calls): void {
+            if (1 === ++$calls) {
+                throw new \RuntimeException('Cannot connect to printer');
+            }
+        });
+
+        try {
+            $handler(new PrintOrderCommand('ORDER-123', true, '2026-10-11T12:00:00.000Z'));
+        } catch (\RuntimeException) {
+        }
+        $handler(new PrintOrderCommand('ORDER-123', true, '2026-10-11T12:00:00.000Z'));
+
+        self::assertSame(2, $calls);
     }
 
     public function testPropagatesPrinterFailuresSoMessengerRetries(): void

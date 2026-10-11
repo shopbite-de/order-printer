@@ -64,11 +64,10 @@ final readonly class Client implements ClientInterface
         $statusCode = $psr7Response->getStatusCode();
         $contents = $psr7Response->getBody()->getContents();
 
-        if (non_empty_string()->matches($contents)) {
-            $contents = decode($contents);
-        }
+        // 204 No Content (e.g. PATCH /api/order/{id}) has an empty body, not JSON
+        $body = non_empty_string()->matches($contents) ? decode($contents) : [];
 
-        return $this->responseHandler->handle($statusCode, $contents ?? []);
+        return $this->responseHandler->handle($statusCode, \is_array($body) ? $body : []);
     }
 
     #[\Override]
