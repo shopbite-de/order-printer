@@ -69,11 +69,15 @@ OpenOrderProvider (#[AsSchedule], handled inside the scheduler_default worker)
   ├─ Infra\Monitoring\SendHeartbeat, every minute, only when HEARTBEAT_URL is set → no transport: SendHeartbeatHandler
   │    runs PrinterChecker and pushes status=up|down (+ reason) to the Uptime Kuma push URL, never throws (docs/monitoring.md)
   └─ PrintOpenOrdersCommand(markInProgress: true), every 10 s → no transport: handled synchronously
-       └─ PrintOpenOrdersHandler: OrderRepository::findNewNumbers()
-            └─ PrintOrderCommand(orderNumber, markInProgress) + DeduplicateStamp("print-order-<n>") → transport "async"
-                 ├─ DeduplicateMiddleware: lock already held (queued/retrying) → message silently dropped
-                 └─ PrintOrderHandler: getByOrderNumber() → PrintOrderProcessorInterface → lock released
+       └─ PrintOpenOrdersHandler: OrderRepository::findNewNumbers() + findReprintRequests()
+            ├─ PrintOrderCommand(orderNumber, markInProgress) + DeduplicateStamp("print-order-<n>") → transport "async"
+            ├─ PrintOrderCommand(orderNumber, markInProgress, reprintRequestedAt) + DeduplicateStamp("reprint-order-<n>-<md5(requestedAt)>")
+            │    for "Jetzt drucken" from the backoffice (open orders skipped, the first path prints them)
+            │    ├─ DeduplicateMiddleware: lock already held (queued/retrying) → message silently dropped
+            └─── PrintOrderHandler: getByOrderNumber() → PrintOrderProcessorInterface → lock released
 ```
+
+**"Jetzt drucken" (reprint on request):** the backoffice sets the order custom field `shopbite_print_requested_at` (ISO, UTC; custom field set of the ShopBite plugin). `findReprintRequests()` searches orders with a request in the last 24 h (`REPRINT_WINDOW`) and keeps those whose request is newer than `shopbite_printed_at`. After every successful print (normal and reprint, not with `dummy://`) `PrintProcessor` sets `shopbite_printed_at` (PATCH `/api/order/{id}`, 204); a failure there is logged as `warning`, never retried, because the receipt is out. So that a request can never print twice even if storing the time keeps failing, `PrintOrderHandler` takes a non-auto-released lock `reprinted-<md5(number+requestedAt)>` (`REPRINT_LOCK_TTL` 25 h, same lock store) before a reprint and releases it only when the print throws. The log line "Order <n> printed." carries `reprint: true|false`. The order printer role needs nothing new (`order:read`, `order:update`).
 
 `PrintOpenOrdersCommand` is deliberately **not** routed to a transport: the scheduler worker runs the poll inline, a failed poll (Shopware down) is just logged and repeated 10 s later, never retried or sent to the failure transport. `PrintOrderCommand` carries `#[AsMessage(transport: 'async')]`. The `async` transport is Doctrine/SQLite (`data/queue_<env>.db`) in prod, `sync://` in dev, and `in-memory://` in test, so in dev `app:print-order` prints immediately without a worker.
 
@@ -89,6 +93,7 @@ Production runs two supervisor programs, one consuming `scheduler_default` (poll
 - `PrintOrderHandler` logs `notice` "Order <n> printed." after every successful print; monitoring counts these lines.
 - Logging: no Monolog. `config/services.yaml` redefines Symfony's built-in `logger` (`HttpKernel\Log\Logger`) to write JSON lines (`Infra\Symfony\Log\JsonLogFormatter`) to stderr from `LOG_LEVEL` up; without that it would log plain text from `error` up only. PHPUnit sets `LOG_LEVEL=emergency`, unit tests use `Tests\Support\SpyLogger`.
 - Known gap: if the print succeeds but `markInProgress()` fails (Shopware API error), the retry prints the receipt again.
+- `Client` maps an empty response body (204) to `[]`; before, a 204 broke `ResponseHandler::handle()`.
 
 ### Printing
 

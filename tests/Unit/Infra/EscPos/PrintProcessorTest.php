@@ -103,6 +103,31 @@ class PrintProcessorTest extends TestCase
         $this->assertFileExists(self::PROJECT_DIR.self::DATA_DIR.'ORDER123_2024-01-01_12-00-00.txt');
     }
 
+    public function testStoresThePrintTimeAfterEveryPrint(): void
+    {
+        $this->orderRepository->expects($this->once())->method('markPrinted');
+
+        $this->printProcessor->__invoke($this->createTestOrder(isNew: false), true);
+    }
+
+    public function testAFailedPrintTimeIsLoggedNotRetried(): void
+    {
+        $this->orderRepository->method('markPrinted')->willThrowException(new \RuntimeException('Shopware down'));
+        $logger = new \Veliu\OrderPrinter\Tests\Support\SpyLogger();
+        $processor = new PrintProcessor(self::PRINTER_DSN, self::DATA_DIR, self::PROJECT_DIR, $this->orderRepository, logger: $logger);
+
+        $processor->__invoke($this->createTestOrder(isNew: false), true);
+
+        $this->assertSame('warning', $logger->records[0]['level']);
+    }
+
+    public function testDummyDsnNeverStoresAPrintTime(): void
+    {
+        $this->orderRepository->expects($this->never())->method('markPrinted');
+
+        new PrintProcessor('dummy://', self::DATA_DIR, self::PROJECT_DIR, $this->orderRepository)->__invoke($this->createTestOrder(isNew: true), true);
+    }
+
     public function testInvokeDoesNotMarkOrderInProgressWhenOrderIsNotNew(): void
     {
         // Arrange

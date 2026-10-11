@@ -118,6 +118,26 @@ class ClientTest extends TestCase
         $this->assertSame($apiResponse, $result);
     }
 
+    public function testEmptyBodyOf204IsAnEmptyArray(): void
+    {
+        $request = $this->createMock(RequestInterface::class);
+        $request->method('getMethod')->willReturn('PATCH');
+        $request->method('getUri')->willReturn('/api/order/a1');
+        $request->method('getHeaders')->willReturn([]);
+        $request->method('getBody')->willReturn(null);
+        $this->requestFactory->method('createRequest')->willReturn($this->psr7Request);
+        $this->psr7Request->method('withHeader')->willReturnSelf();
+        $this->psr7Response->method('getStatusCode')->willReturn(204);
+        $this->psr7Response->method('getBody')->willReturn($this->responseStream);
+        $this->responseStream->method('getContents')->willReturn('');
+        $this->httpClient->method('sendRequest')->willReturn($this->psr7Response);
+
+        $this->responseHandler->expects($this->once())->method('handle')->with(204, [])
+            ->willReturn($this->createMock(ApiResponseInterface::class));
+
+        $this->client->request($request);
+    }
+
     public function testGetApiHost(): void
     {
         $this->assertSame(self::API_HOST, $this->client->getApiHost());
