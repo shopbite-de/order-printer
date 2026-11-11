@@ -88,6 +88,6 @@
         "phpunit/phpunit": "^13.0.0",
         "symfony/browser-kit": "^8.1.5",
         "symfony/css-selector": "^8.1.6",
-        "vimeo/psalm": "^6.17.1"
+        "vimeo/psalm": "^7.0.0"
     }
 }
