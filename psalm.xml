@@ -15,4 +15,4 @@
             <directory name="vendor"/>
         </ignoreFiles>
     </projectFiles>
-<plugins><pluginClass class="Psl\Psalm\Plugin"/></plugins></psalm>
+</psalm>
