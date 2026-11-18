@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace Veliu\OrderPrinter\Infra\Shopware\ResponseObject;
 
 use Psl\Type\TypeInterface;
+use Veliu\OrderPrinter\Domain\Receipt\ReceiptText;
 
 use function Psl\Type\non_empty_string;
 use function Psl\Type\nullable;
 use function Psl\Type\shape;
 
+/** Text fields are cleaned of printer control characters (ReceiptText). */
 final readonly class OrderAddress
 {
     /**
@@ -35,12 +37,12 @@ final readonly class OrderAddress
         $data = self::arrayShape()->coerce($array);
 
         return new self(
-            $data['firstName'],
-            $data['lastName'],
-            $data['street'],
-            $data['city'],
-            $data['phoneNumber'],
-            $data['additionalAddressLine1'],
+            ReceiptText::nonEmptyLine($data['firstName']),
+            ReceiptText::nonEmptyLine($data['lastName']),
+            ReceiptText::nonEmptyLine($data['street']),
+            ReceiptText::nonEmptyLine($data['city']),
+            ReceiptText::nullableLine($data['phoneNumber']),
+            ReceiptText::nullableLine($data['additionalAddressLine1']),
         );
     }
 

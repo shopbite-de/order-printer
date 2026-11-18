@@ -29,7 +29,8 @@ image, at first boot from a file on the boot partition.
 2. In the settings (gear icon): hostname anything (the script renames it), user `pi` with a
    password, WLAN credentials if there is no Ethernet, locale `Europe/Berlin`, **enable SSH**
    with password authentication. SSH over the LAN is only needed for the first run; the
-   script closes it afterwards.
+   script closes it afterwards, switches SSH password login off and locks the password of `pi`
+   (see [Locked out](#troubleshooting) for the way back).
 3. Boot the Pi with the printer connected and switched on.
 
 ## Run the script
@@ -43,7 +44,7 @@ ssh pi@<pi-lan-ip>
 sudo TS_AUTHKEY=tskey-auth-... CUSTOMER=<shop> bash pi-gateway/install.sh
 ```
 
-`CUSTOMER` is the shop slug (`masala-mio`), the Pi becomes `printer-<shop>` in the tailnet.
+`CUSTOMER` is the shop slug (e.g. `mein-restaurant`), the Pi becomes `printer-<shop>` in the tailnet.
 `TS_AUTHKEY` is the reusable `tag:printer` key from the password manager (see
 [tailscale.md](tailscale.md#auth-key-for-the-pi-image)); it is only needed on the first run.
 Both may be left out: the Pi is then provisioned at first boot from a file, see below.
@@ -58,8 +59,9 @@ What the script does, in order:
 | Bridge       | `printer-bridge.service`: `socat -u TCP-LISTEN:9100 … OPEN:/dev/bondrucker`, bound to the device unit   |
 | Provisioning | `printer-gateway-provision` + service: hostname `printer-<shop>`, `tailscale up --ssh --accept-dns=false --advertise-tags=tag:printer`, auto-update on. Runs now with `CUSTOMER`/`TS_AUTHKEY`, otherwise at boot from `printer-gateway.env` |
 | Firewall     | nftables: inbound only on `tailscale0` (plus DHCP, ICMP and Tailscale's UDP 41641); SSH via Tailscale   |
-| Updates      | `unattended-upgrades` with automatic reboot at 04:30 when a kernel update needs it                      |
+| Updates      | `unattended-upgrades` for Debian security, Raspbian and the Raspberry Pi Foundation archive (kernel, firmware), automatic reboot at 04:30 when a kernel update needs it |
 | Watchdog     | `dtparam=watchdog=on` and systemd `RuntimeWatchdogSec=15`: a hung Pi reboots itself                     |
+| SSH          | last step: `PasswordAuthentication no` (`/etc/ssh/sshd_config.d/00-pi-gateway.conf`) and `passwd -l` for the login user (uid 1000, `pi`). The way in is Tailscale SSH, which needs no password; the LAN session of the first run stays open until you close it |
 
 The script ends with a summary and, on the first run, asks for a reboot to activate the
 hardware watchdog. Reboot, then test.
@@ -72,10 +74,11 @@ macOS mount as `bootfs` when the card is plugged into a laptop. Copy
 `dev-ops/pi-gateway/printer-gateway.env.example` there as `printer-gateway.env` and fill in:
 
 ```
-CUSTOMER=masala-mio
+CUSTOMER=mein-restaurant
 TS_AUTHKEY=tskey-auth-...
 #WIFI_SSID=
 #WIFI_PASSWORD=
+#PI_PASSWORD=
 ```
 
 On boot `printer-gateway-provision.service` connects the WLAN if given, sets the hostname,
@@ -117,7 +120,7 @@ LAN address must time out (the firewall drops it).
 **Inside the restaurant LAN, address the Pi by its tailnet IP** (or the full MagicDNS name
 `printer-<shop>.<tailnet>.ts.net`). The router's DNS also knows the short name `printer-<shop>`
 from DHCP and answers with the LAN address first, which the firewall drops, so `ssh
-lv@printer-<shop>` hangs on site while it works from anywhere else.
+pi@printer-<shop>` hangs on site while it works from anywhere else.
 
 Then from the Dokploy host, the check described in [tailscale.md](tailscale.md#verifying-that-containers-reach-the-tailnet),
 and finally `PRINTER_DSN=tcp://<pi-ip>:9100` on the order-printer service with
@@ -147,14 +150,14 @@ sudo sh -c 'tailscale logout; reboot'
 
 ## Cutover log
 
-**2026-09-22, Pizzeria La Fattoria** (first restaurant). The existing Raspberry Pi 2/3 (armhf,
+**2026-09-22, first restaurant.** The existing Raspberry Pi 2/3 (armhf,
 Raspbian 12) that ran the Order Printer locally became the gateway while the legacy service kept
 printing; `install.sh` ran next to it without touching it. Printer: Epson TM-T88 (`04b8:0202`)
 as `/dev/usb/lp0`. Order of events: script, `nc` test print over the tailnet, reboot for the
 watchdog (legacy supervisor came back on its own), Dokploy instance verified with `dummy://`
 (`app:print-order --no-mark-in-progress` against a real order), `supervisorctl stop all` and
 `autostart=false` on the Pi, `PRINTER_DSN=tcp://<pi>:9100` on the instance, `printer:test`,
-test order 12993 printed once and moved to *in progress*. Legacy removal is due after three
+a test order printed once and moved to *in progress*. Legacy removal is due after three
 clean days.
 
 Learnings that went into the script and this document:
@@ -187,16 +190,26 @@ present: `sudo udevadm trigger --subsystem-match=usbmisc --action=add`. `failed`
 `\x1dV\x42\x00` (feed and cut) are the alternatives. The order printer uses the library's cut,
 this only concerns the manual test.
 
-**Tailscale offline.** `tailscale status` on the Pi (via a keyboard, or LAN SSH if
-`ALLOW_LAN_SSH=1` was used). `Logged out` or `NeedsLogin`: the auth key expired before this
+**Tailscale offline.** `tailscale status` on the Pi (via a keyboard after setting a password,
+see *Locked out*, or LAN SSH with an SSH key if `ALLOW_LAN_SSH=1` was used). `Logged out` or `NeedsLogin`: the auth key expired before this
 Pi was provisioned, generate a new one and either re-run the script with `TS_AUTHKEY` and
 `CUSTOMER`, or put a fresh `printer-gateway.env` on the boot partition and reboot. The
 provisioning log is `journalctl -u printer-gateway-provision`. Otherwise check that the restaurant network allows outbound UDP 41641 and HTTPS;
 Tailscale falls back to relays over 443, so a working WLAN is normally enough.
 
-**Locked out.** The firewall accepts SSH only from the tailnet. With the Pi in the tailnet,
-`tailscale ssh pi@printer-<shop>` works from any admin device. Without tailnet access, attach a
-keyboard and screen, or mount the SD card and delete `/etc/nftables.conf` before booting.
+**Locked out.** The firewall accepts SSH only from the tailnet, sshd accepts no passwords, and
+the password of `pi` is locked. With the Pi in the tailnet, `tailscale ssh pi@printer-<shop>`
+(or `root@`) works from any admin device; Tailscale SSH does not use the password. Without
+tailnet access, plug the SD card into a laptop and put a `printer-gateway.env` on the boot
+partition (`bootfs`), then boot the Pi:
+
+- `CUSTOMER` and a fresh `TS_AUTHKEY`: the Pi joins the tailnet again, then use Tailscale SSH.
+- `PI_PASSWORD=<new password>` (alone or together with the above): sets a new password for
+  `pi`, so a keyboard and screen login works. The file is deleted after use. SSH password login
+  stays off; re-running `install.sh` locks the password again.
+
+Mounting the root partition (Linux only) and deleting `/etc/nftables.conf` still opens the LAN
+port, but without a password login only an SSH key in `~pi/.ssh/authorized_keys` gets in.
 
 **Port 9100 reachable from the LAN.** It must not be. `sudo nft list ruleset` should show the
 `inet filter` table with `policy drop` on `input`; `systemctl status nftables` must be active.

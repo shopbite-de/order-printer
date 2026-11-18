@@ -56,19 +56,19 @@ final class TestReceiptPrinterTest extends TestCase
 
     public function testShopNameFallsBackToTheShopwareHost(): void
     {
-        $printer = new TestReceiptPrinter('dummy://', null, 'https://shopware.shopbite.de/', new PrintConnectorFactory(), new MockClock());
+        $printer = new TestReceiptPrinter('dummy://', null, 'https://shop.example.com/', new PrintConnectorFactory(), new MockClock());
 
-        self::assertSame('shopware.shopbite.de', $printer->print()->shopName);
+        self::assertSame('shop.example.com', $printer->print()->shopName);
     }
 
     public function testDsnArgumentOverridesTheConfiguredPrinter(): void
     {
-        $printer = new TestReceiptPrinter('tcp://10.255.255.1:9100', '', 'https://shopware.shopbite.de', new PrintConnectorFactory(), new MockClock());
+        $printer = new TestReceiptPrinter('tcp://10.255.255.1:9100', '', 'https://shop.example.com', new PrintConnectorFactory(), new MockClock());
 
         $receipt = $printer->print('file://'.$this->file);
 
         self::assertSame('file://'.$this->file, $receipt->printerDsn);
-        self::assertSame('shopware.shopbite.de', $receipt->shopName, 'empty SHOP_NAME counts as unset');
+        self::assertSame('shop.example.com', $receipt->shopName, 'empty SHOP_NAME counts as unset');
         self::assertStringContainsString('TESTDRUCK', file_get_contents($this->file));
     }
 

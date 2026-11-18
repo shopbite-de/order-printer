@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Veliu\OrderPrinter\Infra\Shopware\ResponseObject;
 
 use Psl\Type\TypeInterface;
+use Veliu\OrderPrinter\Domain\Receipt\ReceiptText;
 
 use function Psl\Type\array_key;
 use function Psl\Type\dict;
@@ -18,6 +19,7 @@ use function Psl\Type\shape;
 use function Psl\Type\uint;
 use function Psl\Type\union;
 
+/** Order number and customer comment are cleaned of printer control characters (ReceiptText). */
 final readonly class Order
 {
     /**
@@ -45,8 +47,8 @@ final readonly class Order
 
         return new self(
             $data['id'],
-            $data['orderNumber'],
-            $data['customerComment'] ?? null,
+            ReceiptText::nonEmptyLine($data['orderNumber']),
+            ReceiptText::nullableText($data['customerComment'] ?? null),
             (float) $data['amountTotal'],
             array_map([OrderLineItem::class, 'fromArray'], $data['lineItems']),
             StateMachineState::fromArray($data['stateMachineState']),

@@ -7,6 +7,10 @@
 # the SD card is flashed. Sets the hostname printer-<customer>, joins the tailnet as
 # tag:printer, and deletes the file so the auth key does not stay on the card.
 #
+# Recovery: PI_PASSWORD in the file sets a new password for the login user (uid 1000), whose
+# password install.sh locks, so a keyboard and screen login works again. The file may then
+# contain PI_PASSWORD alone (no tailnet join).
+#
 # Installed to /usr/local/sbin by dev-ops/pi-gateway/install.sh and run by
 # printer-gateway-provision.service on every boot; it exits immediately when there is
 # nothing to do.
@@ -36,10 +40,33 @@ if [[ -z ${CUSTOMER:-} || -z ${TS_AUTHKEY:-} ]]; then
         value=${value%"${value##*[![:space:]]}"}
         [[ $value =~ ^\"(.*)\"$ || $value =~ ^\'(.*)\'$ ]] && value=${BASH_REMATCH[1]}
         case $key in
-            CUSTOMER|TS_AUTHKEY|WIFI_SSID|WIFI_PASSWORD) printf -v "$key" '%s' "$value" ;;
+            CUSTOMER|TS_AUTHKEY|WIFI_SSID|WIFI_PASSWORD|PI_PASSWORD) printf -v "$key" '%s' "$value" ;;
             *) log "ignoring unknown key $key" ;;
         esac
     done <"$ENV_FILE"
+fi
+
+forget_file() {
+    [[ -n $ENV_FILE ]] || return 0
+    # FAT has no secure delete; overwrite the content before unlinking.
+    dd if=/dev/zero of="$ENV_FILE" bs=1k count=4 conv=notrunc status=none 2>/dev/null || true
+    rm -f "$ENV_FILE"
+    sync
+    log "$ENV_FILE removed"
+}
+
+# --- recovery: new password for the login user (console login) ------------------------------
+if [[ -n ${PI_PASSWORD:-} ]]; then
+    login_user=$(id -nu 1000 2>/dev/null || true)
+    if [[ -n $login_user ]]; then
+        printf '%s:%s\n' "$login_user" "$PI_PASSWORD" | chpasswd
+        log "new password set for $login_user (console login; SSH still needs Tailscale SSH)"
+    fi
+    PI_PASSWORD=""
+    if [[ -z ${CUSTOMER:-} && -z ${TS_AUTHKEY:-} ]]; then
+        forget_file
+        exit 0
+    fi
 fi
 
 [[ ${TS_AUTHKEY:-} == tskey-auth-* ]] || { log "TS_AUTHKEY in $ENV_FILE is not a Tailscale auth key (must start with tskey-auth-)"; exit 1; }
@@ -91,10 +118,4 @@ else
 fi
 
 # --- forget the key --------------------------------------------------------------------------
-if [[ -n $ENV_FILE ]]; then
-    # FAT has no secure delete; overwrite the content before unlinking.
-    dd if=/dev/zero of="$ENV_FILE" bs=1k count=4 conv=notrunc status=none 2>/dev/null || true
-    rm -f "$ENV_FILE"
-    sync
-    log "$ENV_FILE removed"
-fi
+forget_file

@@ -7,7 +7,7 @@ services:
     restart: unless-stopped
     environment:
       APP_SECRET: ${APP_SECRET:?set APP_SECRET to a random string}
-      SHOPWARE_HOST: ${SHOPWARE_HOST:?e.g. https://shopware.shopbite.de}
+      SHOPWARE_HOST: ${SHOPWARE_HOST:?e.g. https://shop.example.com}
       SHOPWARE_CLIENT_ID: ${SHOPWARE_CLIENT_ID:?Shopware integration client id}
       SHOPWARE_CLIENT_SECRET: ${SHOPWARE_CLIENT_SECRET:?Shopware integration client secret}
       # file:///dev/usb/lp0 | tcp://<pi-or-printer-ip>:9100 | dummy://

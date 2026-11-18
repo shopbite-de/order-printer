@@ -1,5 +1,0 @@
-controllers:
-    resource:
-        path: ../src/Adapter/Controller/
-        namespace: Veliu\OrderPrinter\Adapter\Controller
-    type: attribute

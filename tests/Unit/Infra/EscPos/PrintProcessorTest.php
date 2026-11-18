@@ -256,6 +256,60 @@ class PrintProcessorTest extends TestCase
         $this->assertStringContainsString("\x1D\x56", $content); // Cut command
     }
 
+    public function testControlSequencesFromOrderDataNeverReachThePrinter(): void
+    {
+        // ESC p = open the cash drawer, GS V = cut, ESC @ = reset
+        $kick = "\x1Bp\x00\x19\x19";
+        $order = new Order(
+            'ORDER123',
+            'ORDER123',
+            "Bitte klingeln{$kick}\nbei Müller",
+            '43.96',
+            '5.99',
+            new Address("John{$kick} Doe", "Test Street\x1B@ 123", "Test City\x1DV\x00", "1234{$kick}", "Hinterhaus{$kick}"),
+            [new OrderItem("26{$kick}", "Pizza{$kick} +Käse", '10.99', 1, ReceiptPositionPrintTypeEnum::LABEL)],
+            false,
+            "Lieferung{$kick}",
+            new \DateTimeImmutable('2024-01-01 12:00:00')
+        );
+
+        $this->printProcessor->__invoke($order, false);
+
+        $content = (string) file_get_contents(self::PROJECT_DIR.self::DATA_DIR.'ORDER123_2024-01-01_12-00-00.txt');
+        $this->assertStringNotContainsString("\x1Bp", $content);
+        $this->assertSame(2, substr_count($content, "\x1B@"), 'only the reset at the start (escpos-php sends it twice)');
+        $this->assertSame(1, substr_count($content, "\x1DV"), 'only the final cut');
+        $readable = $this->extractReadableText($content);
+        $this->assertStringContainsString("Bitte klingeln\nbei Müller", $readable);
+        $this->assertStringContainsString('John Doe', $readable);
+        $this->assertStringContainsString('Hinterhaus', $readable);
+    }
+
+    public function testLongFreeTextIsCappedWithAnEllipsis(): void
+    {
+        $comment = str_repeat('Bitte ', 200).'ENDE';
+        $order = new Order(
+            'ORDER123',
+            'ORDER123',
+            $comment,
+            '43.96',
+            '5.99',
+            new Address(str_repeat('Name', 50), str_repeat('Strasse', 50), 'Test City', null, null),
+            [new OrderItem('1', str_repeat('Pizza ', 100), '10.99', 1, ReceiptPositionPrintTypeEnum::LABEL)],
+            false,
+            'Lieferung',
+            new \DateTimeImmutable('2024-01-01 12:00:00')
+        );
+
+        $this->printProcessor->__invoke($order, false);
+
+        $readable = $this->extractReadableText((string) file_get_contents(self::PROJECT_DIR.self::DATA_DIR.'ORDER123_2024-01-01_12-00-00.txt'));
+        $this->assertStringNotContainsString('ENDE', $readable);
+        $this->assertStringContainsString(substr($comment, 0, 497).'...', $readable);
+        $this->assertStringNotContainsString(str_repeat('Name', 50), $readable);
+        $this->assertLessThan(substr_count(str_repeat('Pizza ', 100), 'Pizza'), substr_count($readable, 'Pizza'));
+    }
+
     /**
      * Extract readable text from ESC/POS encoded content
      * This method removes ESC/POS control codes and converts CP858 to UTF-8.

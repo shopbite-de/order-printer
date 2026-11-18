@@ -5,10 +5,10 @@ instance reports in two ways:
 
 | Signal | Where | Catches |
 | --- | --- | --- |
-| Heartbeat every minute | Uptime Kuma push monitor per restaurant (https://status.shopbite.de) | printer unplugged or off, Pi offline, instance or scheduler dead |
-| Container logs (JSON lines) | OpenObserve stream `docker_logs` (https://observe.shopbite.de), shipped by the Vector agent on the Dokploy host | print jobs that failed permanently, Shopware unreachable, an evening without a single receipt |
+| Heartbeat every minute | Uptime Kuma push monitor per restaurant (e.g. `https://status.example.com`) | printer unplugged or off, Pi offline, instance or scheduler dead |
+| Container logs (JSON lines) | OpenObserve stream `docker_logs` (e.g. `https://observe.example.com`), shipped by the Vector agent on the Dokploy host | print jobs that failed permanently, Shopware unreachable, an evening without a single receipt |
 
-Both alert by mail to lirim@veliu.net.
+Both alert by mail to the operator.
 
 ## Heartbeat
 
@@ -105,7 +105,7 @@ minutes, afterwards the next poll queues it again).
 **Kuma: "Pi-Gateway nicht erreichbar".** Check the Pi in the Tailscale admin console
 (`printer-<restaurant>`, last seen). If it is offline: power and network at the restaurant
 (unplug the Pi for 10 seconds, it comes back on its own). If it is online, check the bridge:
-`ssh lv@printer-<restaurant> systemctl status printer-bridge`.
+`tailscale ssh pi@printer-<restaurant> systemctl status printer-bridge`.
 
 **Kuma: down without a message (no heartbeat).** The instance is not running or cannot reach
 Kuma. Check the service in Dokploy and the container logs; `docker exec <container> supervisorctl

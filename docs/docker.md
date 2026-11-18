@@ -28,7 +28,7 @@ with this base.
 ```bash
 docker run -d --name order-printer \
   -e APP_SECRET=$(openssl rand -hex 16) \
-  -e SHOPWARE_HOST=https://shopware.shopbite.de \
+  -e SHOPWARE_HOST=https://shop.example.com \
   -e SHOPWARE_CLIENT_ID=... \
   -e SHOPWARE_CLIENT_SECRET=... \
   -e PRINTER_DSN=tcp://100.64.0.5:9100 \
@@ -50,7 +50,7 @@ docker compose exec order-printer su-exec app php bin/console printer:test
 
 | Variable                 | Required | Description                                                                                                    |
 | ------------------------ | -------- | -------------------------------------------------------------------------------------------------------------- |
-| `SHOPWARE_HOST`          | yes      | Shop URL, e.g. `https://shopware.shopbite.de`                                                                  |
+| `SHOPWARE_HOST`          | yes      | Shop URL, e.g. `https://shop.example.com`                                                                      |
 | `SHOPWARE_CLIENT_ID`     | yes      | Admin API integration client id                                                                                |
 | `SHOPWARE_CLIENT_SECRET` | yes      | Admin API integration client secret                                                                            |
 | `PRINTER_DSN`            | yes      | `tcp://<host>:9100` (network printer / Pi gateway), `file:///dev/usb/lp0` (USB device), `dummy://` (dry run: no printer, orders stay open) |

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Symfony 8 microservice (PHP 8.5) that polls a Shopware 6 shop for orders in state `open`, prints each one as an ESC/POS receipt on a thermal printer (local device file or raw TCP, selected by `PRINTER_DSN`), saves a copy of the raw ESC/POS bytes to `data/receipts/`, and moves the order to `in_progress`. It is part of the ShopBite monorepo (see `../CLAUDE.md`); the receipt print type per line item comes from the `shopbite_receipt_print_type` line-item payload written by `../shopware-plugin`.
+A Symfony 8 console/Messenger microservice (PHP 8.5, no HTTP entry point) that polls a Shopware 6 shop for orders in state `open`, prints each one as an ESC/POS receipt on a thermal printer (local device file or raw TCP, selected by `PRINTER_DSN`), saves a copy of the raw ESC/POS bytes to `data/receipts/`, and moves the order to `in_progress`. It is part of the ShopBite monorepo (see `../CLAUDE.md`); the receipt print type per line item comes from the `shopbite_receipt_print_type` line-item payload written by `../shopware-plugin`.
 
 Namespace root is `Veliu\OrderPrinter\` → `src/`, tests under `Veliu\OrderPrinter\Tests\` → `tests/`.
 
@@ -98,6 +98,8 @@ Production runs two supervisor programs, one consuming `scheduler_default` (poll
 ### Printing
 
 `Infra\EscPos\PrintProcessor` is the only `PrintOrderProcessorInterface` implementation (bound in `config/services/escpos.yaml`). It uses `mike42/escpos-php` with a `MultiplePrintConnector` that writes to the real printer and simultaneously to `<project>/<DATA_DIR>/<orderNumber>_<createdAt>.txt`. All receipt layout lives here: 42-column width, German labels, header shows the shipping method, address is skipped when `shippingMethodName === 'Abholung'`, words starting with `+`/`-` are printed in reverse colours, long lines wrap with 4-space indent.
+
+Order text is untrusted: `Domain\Receipt\ReceiptText` strips ESC/FS/GS + command byte and every other control character (C0 except `\n` in multi-line text, DEL, C1), replaces invalid UTF-8 with `?`, and caps with `...`. The Shopware response objects (`Order`, `OrderAddress`, `OrderLineItem`, `ShippingMethod`) clean every text field on parse, `PrintProcessor` cleans again and caps (`MAX_COMMENT` 500 for the customer comment, `MAX_FIELD` 100 for names, address lines, phone, shipping method, `MAX_POSITION` 300 per line item). New text fields printed on the receipt go through `ReceiptText` too.
 
 The printer connector comes from `Infra\EscPos\PrintConnectorFactory::create(PRINTER_DSN)`:
 
