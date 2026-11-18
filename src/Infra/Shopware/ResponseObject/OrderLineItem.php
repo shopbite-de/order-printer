@@ -69,7 +69,7 @@ final readonly class OrderLineItem
                 'shopbite_receipt_print_type' => optional(nullable(
                     union(literal_scalar('number'), literal_scalar('label'))
                 )),
-            ], allow_unknown_fields: true),
-        ], allow_unknown_fields: true);
+            ], allowUnknownFields: true),
+        ], allowUnknownFields: true);
     }
 }

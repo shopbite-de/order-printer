@@ -29,6 +29,6 @@ final readonly class CalculatedPrice
     {
         return shape([
             'totalPrice' => union(float(), uint()),
-        ], allow_unknown_fields: true);
+        ], allowUnknownFields: true);
     }
 }

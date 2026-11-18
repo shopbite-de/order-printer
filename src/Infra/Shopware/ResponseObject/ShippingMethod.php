@@ -28,6 +28,6 @@ final readonly class ShippingMethod
     {
         return shape([
             'name' => non_empty_string(),
-        ], allow_unknown_fields: true);
+        ], allowUnknownFields: true);
     }
 }

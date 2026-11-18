@@ -49,7 +49,7 @@ final readonly class FindOrderNumbersResponse implements ResponseInterface
             'total' => uint(),
             'data' => vec(shape([
                 'orderNumber' => non_empty_string(),
-            ], allow_unknown_fields: true)),
-        ], allow_unknown_fields: true);
+            ], allowUnknownFields: true)),
+        ], allowUnknownFields: true);
     }
 }

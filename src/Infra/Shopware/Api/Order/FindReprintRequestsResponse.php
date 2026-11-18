@@ -67,8 +67,8 @@ final readonly class FindReprintRequestsResponse implements ResponseInterface
             'data' => vec(shape([
                 'orderNumber' => non_empty_string(),
                 'customFields' => optional(nullable(dict(string(), mixed()))),
-            ], allow_unknown_fields: true)),
-        ], allow_unknown_fields: true);
+            ], allowUnknownFields: true)),
+        ], allowUnknownFields: true);
     }
 
     private static function time(mixed $value): ?\DateTimeImmutable

@@ -48,7 +48,7 @@ final readonly class FindDeliveriesResponse implements ResponseInterface
         return shape([
             'total' => uint(),
             'data' => vec(OrderDelivery::arrayShape()),
-        ], allow_unknown_fields: true);
+        ], allowUnknownFields: true);
     }
 
     public function first(): ?OrderDelivery

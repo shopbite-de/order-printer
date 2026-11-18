@@ -53,6 +53,6 @@ final readonly class OrderAddress
             'city' => non_empty_string(),
             'phoneNumber' => nullable(non_empty_string()),
             'additionalAddressLine1' => nullable(non_empty_string()),
-        ], allow_unknown_fields: true);
+        ], allowUnknownFields: true);
     }
 }
