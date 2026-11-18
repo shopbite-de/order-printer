@@ -16,11 +16,17 @@ use Veliu\OrderPrinter\Domain\Order\Order;
 use Veliu\OrderPrinter\Domain\Order\OrderItem;
 use Veliu\OrderPrinter\Domain\Order\OrderRepositoryInterface;
 use Veliu\OrderPrinter\Domain\Receipt\ReceiptPositionGenerator;
+use Veliu\OrderPrinter\Domain\Receipt\ReceiptText;
 use Veliu\OrderPrinter\Domain\Service\PrintOrderProcessorInterface;
 
 /** @psalm-api  */
 final readonly class PrintProcessor implements PrintOrderProcessorInterface
 {
+    /** Free text from the order is capped (with "...") so one order cannot run the paper roll empty. */
+    public const int MAX_COMMENT = 500;
+    public const int MAX_FIELD = 100;
+    public const int MAX_POSITION = 300;
+
     /** @psalm-var non-empty-string */
     private string $fileDirectory;
     private ReceiptPositionGenerator $receiptPositionGenerator;
@@ -101,16 +107,16 @@ final readonly class PrintProcessor implements PrintOrderProcessorInterface
     {
         $printer->setJustification(Printer::JUSTIFY_CENTER);
         $printer->setTextSize(2, 2);
-        $printer->text(sprintf("$order->shippingMethodName\n"));
+        $printer->text(ReceiptText::line($order->shippingMethodName, self::MAX_FIELD)."\n");
         $printer->feed(1);
         $printer->setJustification(Printer::JUSTIFY_LEFT);
         $printer->setTextSize(1, 2);
-        $printer->text(sprintf("Bestellnummer: %s\n", $order->number));
+        $printer->text(sprintf("Bestellnummer: %s\n", ReceiptText::line($order->number, self::MAX_FIELD)));
         $printer->text(sprintf("Bestellzeitpunkt: %s\n", $order->createdAt
             ->setTimezone(new \DateTimeZone('Europe/Berlin'))
             ->format('d.m.Y H:i:s')));
-        if ($customerComment = $order->customerComment) {
-            $printer->text($customerComment."\n");
+        if ($customerComment = ReceiptText::nullableText($order->customerComment)) {
+            $printer->text(ReceiptText::text($customerComment, self::MAX_COMMENT)."\n");
         }
         $printer->text($this->getDivider());
 
@@ -119,15 +125,15 @@ final readonly class PrintProcessor implements PrintOrderProcessorInterface
 
     private function setAddress(Printer $printer, Address $address): Printer
     {
-        $printer->text(sprintf("%s\n", $address->name));
-        $printer->text(sprintf("%s\n", $address->street));
-        if ($additional = $address->additional) {
-            $printer->text(sprintf("%s\n", $additional));
+        $printer->text(ReceiptText::line($address->name, self::MAX_FIELD)."\n");
+        $printer->text(ReceiptText::line($address->street, self::MAX_FIELD)."\n");
+        if ($additional = ReceiptText::nullableLine($address->additional)) {
+            $printer->text(ReceiptText::line($additional, self::MAX_FIELD)."\n");
         }
-        $printer->text(sprintf("%s\n", $address->city));
+        $printer->text(ReceiptText::line($address->city, self::MAX_FIELD)."\n");
         // orders from the Shopware Admin or an import may have no phone number (#75)
-        if ($phone = $address->phone) {
-            $printer->text(sprintf("%s\n", $phone));
+        if ($phone = ReceiptText::nullableLine($address->phone)) {
+            $printer->text(ReceiptText::line($phone, self::MAX_FIELD)."\n");
         }
 
         $printer->text($this->getDivider());
@@ -149,7 +155,8 @@ final readonly class PrintProcessor implements PrintOrderProcessorInterface
     private function setOrderItems(Printer $printer, array $items): Printer
     {
         foreach ($items as $item) {
-            $leftColumn = sprintf('%dx %s', $item->quantity, ($this->receiptPositionGenerator)($item));
+            $position = ReceiptText::line(($this->receiptPositionGenerator)($item), self::MAX_POSITION);
+            $leftColumn = sprintf('%dx %s', $item->quantity, $position);
             $rightColumn = sprintf('%s €', $item->price);
             $this->addTwoColumnsRow($printer, $leftColumn, $rightColumn);
         }

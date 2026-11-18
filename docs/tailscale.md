@@ -14,7 +14,7 @@ admin laptop (group:admins) ──tcp/22 (Tailscale SSH), tcp/9100──▶ Pi
 
 Tailscale's Free plan is for personal use only, so the tailnet runs on the **Standard** plan.
 
-Neither `shopbite.de` nor `veliu.net` has an identity provider Tailscale can log in with
+Neither of the company's domains has an identity provider Tailscale can log in with
 (Google Workspace, Microsoft Entra, Okta, or OIDC), so the tailnet was created with the GitHub
 login. Tailscale names GitHub users `<github-user>@github`; that is the form used in
 `group:admins`. Further admins are invited from the admin console (**Users → Invite**) and
@@ -37,7 +37,8 @@ carrying these tags.
 
 ## Policy
 
-Upload `tailscale-acl.json` in the admin console under **Access controls**, replacing the
+Upload `tailscale-acl.json` in the admin console under **Access controls** (with your own
+`<github-user>@github` logins in `group:admins`), replacing the
 default policy (the default allows everything to talk to everything). The file is plain JSON
 so it can be validated with `jq`; the admin console also accepts it unchanged.
 
@@ -98,7 +99,7 @@ Never commit the key. The setup script reads it from `TS_AUTHKEY`.
 
 ## Joining the Dokploy host
 
-On the Dokploy host (`panel.veliu.net`):
+On the Dokploy host:
 
 ```bash
 curl -fsSL https://tailscale.com/install.sh | sh
@@ -147,7 +148,7 @@ docker run --rm --network ts-test alpine nc -zv -w 3 $PI 9100
 docker network rm ts-test
 ```
 
-Verified on 2026-09-21 on `panel.veliu.net` (Docker's default bridge, plain `alpine`
+Verified on 2026-09-21 on the production Dokploy host (Docker's default bridge, plain `alpine`
 container): port 9100 on the Pi `open`, port 22 `Operation timed out`. The host routes
 container traffic into the tailnet without a sidecar.
 

@@ -6,6 +6,7 @@ namespace Veliu\OrderPrinter\Infra\Shopware\ResponseObject;
 
 use Psl\Type\TypeInterface;
 use Veliu\OrderPrinter\Domain\Receipt\ReceiptPositionPrintTypeEnum;
+use Veliu\OrderPrinter\Domain\Receipt\ReceiptText;
 
 use function Psl\Type\float;
 use function Psl\Type\literal_scalar;
@@ -17,6 +18,7 @@ use function Psl\Type\shape;
 use function Psl\Type\uint;
 use function Psl\Type\union;
 
+/** Label and product number are cleaned of printer control characters (ReceiptText). */
 final readonly class OrderLineItem
 {
     /**
@@ -46,11 +48,11 @@ final readonly class OrderLineItem
         return new self(
             $data['id'],
             $data['parentId'] ?? null,
-            $data['label'],
+            ReceiptText::nonEmptyLine($data['label']),
             $data['quantity'],
             (float) $data['totalPrice'],
             $data['type'],
-            $data['payload']['productNumber'],
+            ReceiptText::nonEmptyLine($data['payload']['productNumber']),
             ReceiptPositionPrintTypeEnum::tryFrom($data['payload']['shopbite_receipt_print_type'] ?? '')
         );
     }

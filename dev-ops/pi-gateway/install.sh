@@ -17,7 +17,11 @@
 # Variables (all optional):
 #   CUSTOMER         becomes the hostname printer-<shop> (also in the tailnet)
 #   TS_AUTHKEY       reusable, pre-authorized key with tag:printer; needed with CUSTOMER
-#   ALLOW_LAN_SSH=1  keep port 22 open on every interface, not only in the tailnet
+#   ALLOW_LAN_SSH=1  keep port 22 open on every interface, not only in the tailnet (key login only)
+#
+# At the end, SSH password login is switched off and the password of the login user (uid 1000,
+# usually pi) is locked: access is Tailscale SSH. Recovery without the tailnet goes through the
+# boot partition (PI_PASSWORD or a fresh TS_AUTHKEY in printer-gateway.env), see docs/pi-gateway.md.
 #
 set -euo pipefail
 
@@ -191,6 +195,9 @@ note "active; SSH via 'tailscale ssh <user>@$HOSTNAME_NOW'$([[ $ALLOW_LAN_SSH ==
 
 # ---------------------------------------------------------------------------------------------
 step "Unattended security updates, reboot at 04:30 when required"
+# The stock patterns only match Debian's own archive. Raspberry Pi OS (armhf) takes its packages
+# from Raspbian, and kernel, firmware and Pi tools come from the Raspberry Pi Foundation archive on
+# every variant: without these patterns they would never be updated. The list adds to Debian's.
 install_file /etc/apt/apt.conf.d/20auto-upgrades <<'CONF' || true
 APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
@@ -201,6 +208,12 @@ Unattended-Upgrade::Automatic-Reboot "true";
 Unattended-Upgrade::Automatic-Reboot-WithUsers "true";
 Unattended-Upgrade::Automatic-Reboot-Time "04:30";
 Unattended-Upgrade::Remove-Unused-Dependencies "true";
+Unattended-Upgrade::Origins-Pattern {
+    "origin=Debian,codename=${distro_codename},label=Debian-Security";
+    "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";
+    "origin=Raspbian,codename=${distro_codename},label=Raspbian";
+    "origin=Raspberry Pi Foundation,codename=${distro_codename},label=Raspberry Pi Foundation";
+};
 CONF
 systemctl enable --now apt-daily.timer apt-daily-upgrade.timer >/dev/null 2>&1
 
@@ -229,6 +242,35 @@ then
     systemctl daemon-reexec
 fi
 [[ -e /dev/watchdog ]] || REBOOT_NEEDED=1
+
+# ---------------------------------------------------------------------------------------------
+step "SSH: no password login, login user's password locked"
+# Last step on purpose: a LAN SSH session of the first run stays open until it is closed. From
+# now on the way in is Tailscale SSH (no password involved); sshd's own password login is off
+# for every interface. 00- so it wins over later drop-ins (Imager, cloud-init: first value wins).
+if install_file /etc/ssh/sshd_config.d/00-pi-gateway.conf <<'CONF'
+# Managed by dev-ops/pi-gateway/install.sh (order-printer). Access via Tailscale SSH.
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitEmptyPasswords no
+CONF
+then
+    if sshd -t 2>/dev/null; then
+        systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
+        note "sshd reloaded"
+    else
+        note "WARNING: sshd -t rejects the configuration, sshd not reloaded"
+    fi
+fi
+LOGIN_USER=$(id -nu 1000 2>/dev/null || true)
+if [[ -n $LOGIN_USER ]]; then
+    if passwd -S "$LOGIN_USER" 2>/dev/null | awk '{exit !($2 == "L")}'; then
+        note "password of $LOGIN_USER already locked"
+    else
+        passwd -l "$LOGIN_USER" >/dev/null
+        note "password of $LOGIN_USER locked (unlock: PI_PASSWORD in printer-gateway.env, see docs/pi-gateway.md)"
+    fi
+fi
 
 # ---------------------------------------------------------------------------------------------
 step "Done"

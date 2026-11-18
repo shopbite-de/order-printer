@@ -7,7 +7,7 @@ Admin API integration) maps to exactly one instance.
 
 ```
 Dokploy project "order-printer"
-  ├── order-printer-masala-mio   SHOPWARE_HOST=… PRINTER_DSN=tcp://100.x.y.z:9100   volume order-printer-masala-mio-data
+  ├── order-printer-mein-restaurant   SHOPWARE_HOST=… PRINTER_DSN=tcp://100.x.y.z:9100   volume order-printer-mein-restaurant-data
   ├── order-printer-<shop-2>
   └── …
 ```

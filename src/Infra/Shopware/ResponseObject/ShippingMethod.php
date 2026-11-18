@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Veliu\OrderPrinter\Infra\Shopware\ResponseObject;
 
 use Psl\Type\TypeInterface;
+use Veliu\OrderPrinter\Domain\Receipt\ReceiptText;
 
 use function Psl\Type\non_empty_string;
 use function Psl\Type\shape;
@@ -21,7 +22,7 @@ final readonly class ShippingMethod
     {
         $data = self::arrayShape()->coerce($array);
 
-        return new self($data['name']);
+        return new self(ReceiptText::nonEmptyLine($data['name']));
     }
 
     public static function arrayShape(): TypeInterface

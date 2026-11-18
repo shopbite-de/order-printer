@@ -42,7 +42,6 @@ RUN set -eux; \
 COPY --from=vendor /app/vendor ./vendor
 COPY bin bin
 COPY config config
-COPY public public
 COPY src src
 COPY composer.json composer.lock symfony.lock ./
 # Not the repository's .env: Dokploy overwrites it with the service environment before the build.
