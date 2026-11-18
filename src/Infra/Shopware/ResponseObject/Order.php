@@ -63,6 +63,6 @@ final readonly class Order
             'amountTotal' => union(float(), uint()),
             'lineItems' => non_empty_vec(dict(array_key(), mixed())),
             'stateMachineState' => dict(array_key(), mixed()),
-        ], allow_unknown_fields: true);
+        ], allowUnknownFields: true);
     }
 }

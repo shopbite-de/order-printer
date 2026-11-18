@@ -28,6 +28,6 @@ final readonly class StateMachineState
     {
         return shape([
             'technicalName' => non_empty_string(),
-        ], allow_unknown_fields: true);
+        ], allowUnknownFields: true);
     }
 }
