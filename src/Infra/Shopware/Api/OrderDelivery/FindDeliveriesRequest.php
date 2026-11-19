@@ -38,7 +38,7 @@ final readonly class FindDeliveriesRequest implements RequestInterface
                 'order_address' => ['id', 'firstName', 'lastName', 'street', 'zipcode', 'city', 'phoneNumber', 'additionalAddressLine1'],
                 'state_machine_state' => ['technicalName'],
                 'calculated_price' => ['totalPrice'],
-                'shipping_method' => ['name', 'customFields'],
+                'shipping_method' => ['name', 'customFields', 'translated'],
             ],
             'associations' => [
                 'shippingMethod' => [],

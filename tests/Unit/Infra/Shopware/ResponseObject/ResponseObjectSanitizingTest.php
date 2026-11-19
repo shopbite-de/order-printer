@@ -82,6 +82,14 @@ final class ResponseObjectSanitizingTest extends TestCase
         self::assertFalse(ShippingMethod::fromArray(['name' => 'Abholung', 'customFields' => ['shopbite_fulfillment' => ['pickup']]])->isPickup);
     }
 
+    /** Shopware merges custom fields over the language fallback into `translated`; that wins over the raw field. */
+    public function testShippingMethodFulfillmentFromTranslatedCustomFields(): void
+    {
+        self::assertTrue(ShippingMethod::fromArray(['name' => 'Abholung', 'customFields' => null, 'translated' => ['customFields' => ['shopbite_fulfillment' => 'pickup']]])->isPickup);
+        self::assertFalse(ShippingMethod::fromArray(['name' => 'Abholung', 'customFields' => ['shopbite_fulfillment' => 'pickup'], 'translated' => ['customFields' => ['shopbite_fulfillment' => 'delivery']]])->isPickup);
+        self::assertTrue(ShippingMethod::fromArray(['name' => 'Abholung', 'customFields' => ['shopbite_fulfillment' => 'pickup'], 'translated' => ['name' => 'Abholung']])->isPickup);
+    }
+
     public function testShippingMethodName(): void
     {
         self::assertSame('Lieferung', ShippingMethod::fromArray(['name' => "Lieferung\x1Bd\x05"])->name);

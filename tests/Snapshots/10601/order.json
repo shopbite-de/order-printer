@@ -23,7 +23,14 @@
           "shopbite_fulfillment": "pickup",
           "shopbite_lead_time_minutes": 20
         },
-        "apiAlias": "shipping_method"
+        "apiAlias": "shipping_method",
+        "translated": {
+          "name": "Abholung",
+          "customFields": {
+            "shopbite_fulfillment": "pickup",
+            "shopbite_lead_time_minutes": 20
+          }
+        }
       },
       "order": {
         "createdAt": "2026-01-09T17:46:29.184+00:00",

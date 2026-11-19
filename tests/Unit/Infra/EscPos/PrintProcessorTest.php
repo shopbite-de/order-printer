@@ -226,7 +226,8 @@ class PrintProcessorTest extends TestCase
             [$this->createTestOrderItem()],
             false,
             'Lieferung',
-            $createdAt
+            $createdAt,
+            false,
         );
 
         // Act
@@ -270,7 +271,8 @@ class PrintProcessorTest extends TestCase
             [new OrderItem("26{$kick}", "Pizza{$kick} +Käse", '10.99', 1, ReceiptPositionPrintTypeEnum::LABEL)],
             false,
             "Lieferung{$kick}",
-            new \DateTimeImmutable('2024-01-01 12:00:00')
+            new \DateTimeImmutable('2024-01-01 12:00:00'),
+            false,
         );
 
         $this->printProcessor->__invoke($order, false);
@@ -298,7 +300,8 @@ class PrintProcessorTest extends TestCase
             [new OrderItem('1', str_repeat('Pizza ', 100), '10.99', 1, ReceiptPositionPrintTypeEnum::LABEL)],
             false,
             'Lieferung',
-            new \DateTimeImmutable('2024-01-01 12:00:00')
+            new \DateTimeImmutable('2024-01-01 12:00:00'),
+            false,
         );
 
         $this->printProcessor->__invoke($order, false);
@@ -398,7 +401,8 @@ class PrintProcessorTest extends TestCase
             $items,
             false,
             'Lieferung',
-            new \DateTimeImmutable('2024-01-01 12:00:00')
+            new \DateTimeImmutable('2024-01-01 12:00:00'),
+            false,
         );
     }
 

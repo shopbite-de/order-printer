@@ -122,7 +122,8 @@ final class PrintOrderHandlerTest extends TestCase
             [],
             true,
             'Lieferung',
-            new \DateTimeImmutable('2025-07-31')
+            new \DateTimeImmutable('2025-07-31'),
+            false,
         );
     }
 }
