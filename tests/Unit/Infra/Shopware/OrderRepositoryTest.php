@@ -91,6 +91,7 @@ class OrderRepositoryTest extends TestCase
             true,
             'Lieferung',
             new \DateTimeImmutable('2025-07-31'),
+            false,
         );
 
         $this->client
@@ -184,7 +185,7 @@ class OrderRepositoryTest extends TestCase
 
     public function testMarkPrintedStoresTheTimeInUtc(): void
     {
-        $order = new Order('a1b2', '10001', null, '10,00', '0,00', new Address('A B', 'S 1', 'C', '0123', null), [], false, 'Lieferung', new \DateTimeImmutable());
+        $order = new Order('a1b2', '10001', null, '10,00', '0,00', new Address('A B', 'S 1', 'C', '0123', null), [], false, 'Lieferung', new \DateTimeImmutable(), false);
         $this->client->expects($this->once())->method('request')
             ->with($this->callback(static function (MarkPrintedRequest $request): bool {
                 self::assertSame('PATCH', $request->getMethod());

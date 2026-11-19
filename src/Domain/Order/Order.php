@@ -31,7 +31,7 @@ final readonly class Order
         public string $shippingMethodName,
         public \DateTimeImmutable $createdAt,
         // pickup in the restaurant: the receipt has no delivery address
-        public bool $isPickup = false,
+        public bool $isPickup,
     ) {
     }
 }
