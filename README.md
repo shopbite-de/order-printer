@@ -10,7 +10,7 @@ Shopware 6 ──(Admin API, every 10 s)──► scheduler worker ──► SQL
 ```
 
 1. The **scheduler worker** polls the Admin API every 10 seconds for orders in state *open* and queues one print job per order.
-2. The **print worker** renders the receipt (42 columns, order number, time, delivery or pickup, address, items with extras, totals) and sends it to the printer. A copy of the raw bytes is kept in `data/receipts/`.
+2. The **print worker** renders the receipt (42 columns, order number, time, delivery or pickup (from the shipping method's `shopbite_fulfillment` custom field), address, items with extras, totals) and sends it to the printer. A copy of the raw bytes is kept in `data/receipts/`.
 3. Only after the receipt was printed is the order set to *in progress* in Shopware. A failed print leaves it *open* and is retried with backoff for about 30 minutes; the poll never queues the same order twice while a job is pending (see [Failure handling](#failure-handling)).
 
 Line items are printed by name, or by product number when the ShopBite Shopware plugin marks them with the `number` receipt print type (for example `26 +Knoblauch` instead of `Pizza Mix +Knoblauch`).

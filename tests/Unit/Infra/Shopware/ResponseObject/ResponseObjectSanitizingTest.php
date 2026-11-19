@@ -71,6 +71,17 @@ final class ResponseObjectSanitizingTest extends TestCase
         self::assertSame("Bitte klingeln\nk1P0bei Müller", $order->customerComment);
     }
 
+    /** Pickup or delivery is only the plugin's custom field; a method without it delivers. */
+    public function testShippingMethodFulfillment(): void
+    {
+        self::assertTrue(ShippingMethod::fromArray(['name' => 'Express', 'customFields' => ['shopbite_fulfillment' => 'pickup']])->isPickup);
+        self::assertFalse(ShippingMethod::fromArray(['name' => 'Abholung', 'customFields' => ['shopbite_fulfillment' => 'delivery']])->isPickup);
+        self::assertFalse(ShippingMethod::fromArray(['name' => 'Abholung', 'customFields' => null])->isPickup);
+        self::assertFalse(ShippingMethod::fromArray(['name' => 'Abholung'])->isPickup);
+        self::assertFalse(ShippingMethod::fromArray(['name' => 'Abholung', 'customFields' => ['shopbite_fulfillment' => 'drone']])->isPickup);
+        self::assertFalse(ShippingMethod::fromArray(['name' => 'Abholung', 'customFields' => ['shopbite_fulfillment' => ['pickup']]])->isPickup);
+    }
+
     public function testShippingMethodName(): void
     {
         self::assertSame('Lieferung', ShippingMethod::fromArray(['name' => "Lieferung\x1Bd\x05"])->name);

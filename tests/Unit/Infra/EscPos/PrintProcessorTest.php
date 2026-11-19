@@ -310,6 +310,37 @@ class PrintProcessorTest extends TestCase
         $this->assertLessThan(substr_count(str_repeat('Pizza ', 100), 'Pizza'), substr_count($readable, 'Pizza'));
     }
 
+    public function testPickupOrderHasNoAddress(): void
+    {
+        $this->orderRepository->expects($this->never())->method('markInProgress');
+        $this->printProcessor->__invoke($this->createTestOrder(shippingMethodName: 'Selbstabholer', isPickup: true), false);
+
+        $readable = $this->extractReadableText((string) file_get_contents(self::PROJECT_DIR.self::DATA_DIR.'ORDER123_2024-01-01_12-00-00.txt'));
+        $this->assertStringContainsString('Selbstabholer', $readable);
+        $this->assertStringNotContainsString('Test Street 123', $readable);
+        $this->assertStringNotContainsString('John Doe', $readable);
+    }
+
+    /** The name no longer decides: a delivery method called "Abholung" still prints the address. */
+    public function testDeliveryOrderPrintsTheAddressWhateverTheMethodIsCalled(): void
+    {
+        $this->orderRepository->expects($this->never())->method('markInProgress');
+        $this->printProcessor->__invoke($this->createTestOrder(shippingMethodName: 'Abholung', isPickup: false), false);
+
+        $readable = $this->extractReadableText((string) file_get_contents(self::PROJECT_DIR.self::DATA_DIR.'ORDER123_2024-01-01_12-00-00.txt'));
+        $this->assertStringContainsString('Test Street 123', $readable);
+    }
+
+    /** The storefront writes the wished time as the comment's first line; it is printed as is. */
+    public function testWishedPickupTimeIsPrintedAsWritten(): void
+    {
+        $this->orderRepository->expects($this->never())->method('markInProgress');
+        $this->printProcessor->__invoke($this->createTestOrder(comment: "Wunschabholzeit: 18:15\nKomme mit dem Rad", isPickup: true), false);
+
+        $readable = $this->extractReadableText((string) file_get_contents(self::PROJECT_DIR.self::DATA_DIR.'ORDER123_2024-01-01_12-00-00.txt'));
+        $this->assertStringContainsString("Wunschabholzeit: 18:15\nKomme mit dem Rad", $readable);
+    }
+
     /**
      * Extract readable text from ESC/POS encoded content
      * This method removes ESC/POS control codes and converts CP858 to UTF-8.
@@ -335,12 +366,12 @@ class PrintProcessorTest extends TestCase
         return $utf8Content ?: $cleanContent;
     }
 
-    private function createTestOrder(bool $isNew = true): Order
+    private function createTestOrder(bool $isNew = true, string $shippingMethodName = 'Lieferung', bool $isPickup = false, ?string $comment = null): Order
     {
         return new Order(
             'ORDER123',
             'ORDER123',
-            null,
+            $comment,
             '43.96',
             '5.99',
             $this->createTestAddress(),
@@ -349,8 +380,9 @@ class PrintProcessorTest extends TestCase
                 new OrderItem('1', 'Test Product 2', '15.99', 1, ReceiptPositionPrintTypeEnum::LABEL),
             ],
             $isNew,
-            'Lieferung',
-            new \DateTimeImmutable('2024-01-01 12:00:00')
+            $shippingMethodName,
+            new \DateTimeImmutable('2024-01-01 12:00:00'),
+            $isPickup,
         );
     }
 
