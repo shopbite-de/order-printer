@@ -78,6 +78,7 @@ final class InMemoryOrderRepository implements OrderRepositoryInterface
             $this->open,
             $this->order->shippingMethodName,
             $this->order->createdAt,
+            $this->order->isPickup,
         );
     }
 }

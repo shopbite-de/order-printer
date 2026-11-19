@@ -51,6 +51,17 @@ class OrderRepositoryTest extends TestCase
         $this->assertEquals('50,00', $order->shippingCost);
         $this->assertEquals('John Doe', $order->address->name);
         $this->assertCount(1, $order->items);
+        $this->assertFalse($order->isPickup);
+    }
+
+    public function testPickupComesFromTheShippingMethodsFulfillmentField(): void
+    {
+        $orderDelivery = $this->createOrderDelivery('10001');
+        $orderDelivery['shippingMethod'] = ['name' => 'Selbstabholer', 'customFields' => ['shopbite_fulfillment' => 'pickup']];
+
+        $this->client->expects($this->once())->method('request')->willReturn(new ApiResponse(200, ['total' => 1, 'data' => [$orderDelivery]]));
+
+        $this->assertTrue($this->repository->getByOrderNumber('10001')->isPickup);
     }
 
     public function testGetByOrderNumberThrowsExceptionWhenNotFound(): void

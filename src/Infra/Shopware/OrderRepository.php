@@ -108,6 +108,7 @@ final readonly class OrderRepository implements OrderRepositoryInterface
             OrderStateEnum::OPEN === $orderDelivery->order->stateMachineState->technicalName,
             $orderDelivery->shippingMethod->name,
             $orderDelivery->order->createdAt,
+            $orderDelivery->shippingMethod->isPickup,
         );
     }
 
