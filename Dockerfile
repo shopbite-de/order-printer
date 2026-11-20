@@ -5,7 +5,7 @@
 # Built in: ctype, iconv, mbstring, pdo_sqlite, sqlite3, zlib, posix, opcache.
 # Added:    bcmath (php-standard-library), intl (mike42/escpos-php), pcntl (graceful SIGTERM for messenger:consume).
 # ---------------------------------------------------------------------------
-FROM php:8.5-cli-alpine AS base
+FROM php:8.6-cli-alpine AS base
 
 RUN set -eux; \
     apk add --no-cache icu-libs; \
